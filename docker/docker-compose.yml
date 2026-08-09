@@ -1,0 +1,16 @@
+services:
+  jp-stock-daytrading-app:
+    container_name: jp-stock-daytrading-app
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: on-failure
+    env_file:
+      - ../.env
+    networks:
+      - jp-stock-daytrading-net
+
+networks:
+  jp-stock-daytrading-net:
+    name: jp-stock-daytrading-net
+    driver: bridge
