@@ -1,0 +1,7 @@
+# 銘柄リストの雛形。
+# 各銘柄は status を持つ想定:
+#   - active: 売買対象
+#   - observation: 監視のみ
+#   - archived: アーカイブ
+#   - index_proxy: 指数プロキシ
+symbols: []
