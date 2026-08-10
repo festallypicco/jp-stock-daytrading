@@ -25,6 +25,18 @@ def is_system_halted(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def has_active_infra_halt(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM system_halts
+        WHERE halt_category = 'INFRA' AND resolved_at IS NULL
+        LIMIT 1
+        """
+    ).fetchone()
+    return row is not None
+
+
 def is_symbol_halted(conn: sqlite3.Connection, symbol_code: str) -> bool:
     row = conn.execute(
         """

@@ -72,33 +72,37 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 CREATE TABLE IF NOT EXISTS positions (
-    position_id     TEXT PRIMARY KEY,        -- UUID v7
-    symbol_code     TEXT NOT NULL REFERENCES symbols(code),
-    qty             INTEGER NOT NULL,
-    entry_price     REAL NOT NULL,
-    status          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
-    opened_at       TEXT NOT NULL,
-    closed_at       TEXT
+    position_id            TEXT PRIMARY KEY,        -- UUID v7
+    symbol_code             TEXT NOT NULL REFERENCES symbols(code),
+    qty                       INTEGER NOT NULL,
+    entry_price                REAL NOT NULL,
+    entry_oir_rank_bucket        TEXT,                -- エントリー時点のOIRランクバケツ
+    entry_gap_rate_bucket         TEXT,                -- エントリー時点の寄り付きギャップ率バケツ
+    status                          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
+    opened_at                        TEXT NOT NULL,
+    closed_at                         TEXT
 );
 
 CREATE TABLE IF NOT EXISTS trades (
-    trade_id              TEXT PRIMARY KEY,   -- UUID v7
-    symbol_code           TEXT NOT NULL REFERENCES symbols(code),
-    trade_date            TEXT NOT NULL,
-    side                   TEXT NOT NULL,
-    entry_price             REAL NOT NULL,
-    exit_price               REAL NOT NULL,
-    qty                      INTEGER NOT NULL,
-    pnl                      REAL NOT NULL,
-    oir_rank_bucket          TEXT NOT NULL,
-    gap_rate_bucket          TEXT NOT NULL,
-    jibai_value              REAL,
-    jibai_label              TEXT CHECK (jibai_label IN ('強', '平', '弱')),
-    kill_flag                INTEGER NOT NULL DEFAULT 0,
-    mfe                      REAL,
-    mae                      REAL,
-    settlement_9_30_price    REAL,
-    created_at               TEXT NOT NULL
+    trade_id                TEXT PRIMARY KEY,   -- UUID v7
+    position_id               TEXT REFERENCES positions(position_id),
+    exit_order_id               TEXT REFERENCES orders(order_id),
+    symbol_code                  TEXT NOT NULL REFERENCES symbols(code),
+    trade_date                    TEXT NOT NULL,
+    side                            TEXT NOT NULL,
+    entry_price                      REAL NOT NULL,
+    exit_price                        REAL NOT NULL,
+    qty                                 INTEGER NOT NULL,
+    pnl                                  REAL NOT NULL,
+    oir_rank_bucket                       TEXT NOT NULL,
+    gap_rate_bucket                        TEXT NOT NULL,
+    jibai_value                             REAL,
+    jibai_label                              TEXT CHECK (jibai_label IN ('強', '平', '弱')),
+    kill_flag                                 INTEGER NOT NULL DEFAULT 0,
+    mfe                                        REAL,
+    mae                                         REAL,
+    settlement_9_30_price                        REAL,
+    created_at                                    TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS system_halts (
