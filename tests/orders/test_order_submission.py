@@ -17,6 +17,7 @@ from src.broker.types import (
     OrderRequest,
     OrderResult,
     OrderStatusResult,
+    TickData,
 )
 from src.orders.order_submission import ExitOrderHeld, submit_entry_order, submit_exit_order
 
@@ -41,6 +42,9 @@ class _ExplodingBroker(BrokerClient):
 
     def get_board(self, symbol_code: str) -> BoardSnapshot:
         raise AssertionError("get_board should not be called when halted")
+
+    def get_tick(self, symbol_code: str) -> TickData:
+        raise AssertionError("get_tick should not be called when halted")
 
 
 class TestSubmitEntryOrder(unittest.TestCase):

@@ -6,7 +6,14 @@ import unittest
 
 from src.broker.base import BrokerClient
 from src.broker.mock_client import MockBrokerClient
-from src.broker.types import BoardSnapshot, BrokerPosition, OrderRequest, OrderResult, OrderStatusResult
+from src.broker.types import (
+    BoardSnapshot,
+    BrokerPosition,
+    OrderRequest,
+    OrderResult,
+    OrderStatusResult,
+    TickData,
+)
 from src.batch.topix_proxy import classify_topix_change, fetch_topix_price_with_retry
 
 
@@ -26,6 +33,9 @@ class _AlwaysFailingBroker(BrokerClient):
         raise RuntimeError("quote fetch failed")
 
     def get_board(self, symbol_code: str) -> BoardSnapshot:
+        raise NotImplementedError
+
+    def get_tick(self, symbol_code: str) -> TickData:
         raise NotImplementedError
 
 

@@ -50,3 +50,10 @@ class BoardSnapshot:
     symbol_code: str
     bids: list[BoardLevel]  # 10階層、level=1が最良気配
     asks: list[BoardLevel]  # 10階層、level=1が最良気配
+
+
+@dataclass(frozen=True)
+class TickData:
+    symbol_code: str
+    price: float
+    cumulative_volume: int  # 当日寄り付きからの累積出来高

@@ -59,6 +59,21 @@ class TestMockBrokerClient(unittest.TestCase):
         self.assertGreater(board.asks[0].price, quote)
         self.assertGreater(quote, board.bids[0].price)
 
+    def test_get_tick_increments_cumulative_volume(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1234.0})
+
+        tick1 = client.get_tick("7203")
+        tick2 = client.get_tick("7203")
+        tick3 = client.get_tick("7203")
+
+        self.assertEqual(tick1.cumulative_volume, 500)
+        self.assertEqual(tick2.cumulative_volume, 1000)
+        self.assertEqual(tick3.cumulative_volume, 1500)
+
+        self.assertEqual(tick1.price, client.get_quote("7203"))
+        self.assertEqual(tick2.price, client.get_quote("7203"))
+        self.assertEqual(tick3.price, client.get_quote("7203"))
+
 
 if __name__ == "__main__":
     unittest.main()

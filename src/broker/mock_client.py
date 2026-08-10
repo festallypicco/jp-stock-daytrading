@@ -13,11 +13,13 @@ from src.broker.types import (
     OrderRequest,
     OrderResult,
     OrderStatusResult,
+    TickData,
 )
 
 _DEFAULT_QUOTE_PRICE = 1000.0
 _BOARD_DEPTH = 10
 _BOARD_VOLUME = 1000
+_TICK_VOLUME_INCREMENT = 500
 
 
 @dataclass
@@ -38,6 +40,7 @@ class MockBrokerClient(BrokerClient):
         self._last_price_by_symbol: dict[str, float] = (
             dict(initial_prices) if initial_prices else {}
         )
+        self._cumulative_volume_by_symbol: dict[str, int] = {}
 
     def place_order(self, request: OrderRequest) -> OrderResult:
         if self._force_reject:
@@ -101,3 +104,14 @@ class MockBrokerClient(BrokerClient):
             for level in range(1, _BOARD_DEPTH + 1)
         ]
         return BoardSnapshot(symbol_code=symbol_code, bids=bids, asks=asks)
+
+    def get_tick(self, symbol_code: str) -> TickData:
+        updated_volume = (
+            self._cumulative_volume_by_symbol.get(symbol_code, 0) + _TICK_VOLUME_INCREMENT
+        )
+        self._cumulative_volume_by_symbol[symbol_code] = updated_volume
+        return TickData(
+            symbol_code=symbol_code,
+            price=self.get_quote(symbol_code),
+            cumulative_volume=updated_volume,
+        )

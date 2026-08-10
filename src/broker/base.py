@@ -10,6 +10,7 @@ from src.broker.types import (
     OrderRequest,
     OrderResult,
     OrderStatusResult,
+    TickData,
 )
 
 
@@ -50,5 +51,14 @@ class BrokerClient(ABC):
         """指定銘柄の板情報（気配値10階層）を取得する。
 
         板情報全体が必要な場面向け（例: 日中の板情報収集バッチ）。
+        実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
+        """
+
+    @abstractmethod
+    def get_tick(self, symbol_code: str) -> TickData:
+        """指定銘柄の現在値と当日累積出来高を取得する。
+
+        VWAP計算など、価格と出来高の両方が継続的に必要な場面向け
+        （get_quote()は価格のみが必要な場面向けとして残す）。
         実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
         """
