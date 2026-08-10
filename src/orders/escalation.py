@@ -104,24 +104,17 @@ def escalate_to_market(
 
         status_result = wait_for_fill(broker, result.broker_order_id)
         if status_result.status == "FILLED":
-            filled_price = status_result.filled_price
-            if filled_price is None:
-                position_row = conn.execute(
-                    """
-                    SELECT entry_price
-                    FROM positions
-                    WHERE symbol_code = ? AND status = 'OPEN'
-                    LIMIT 1
-                    """,
-                    (symbol_code,),
-                ).fetchone()
-                filled_price = position_row[0] if position_row is not None else 0.0
+            if status_result.filled_price is None:
+                raise ValueError(
+                    "market fill price is unknown for escalation order "
+                    f"{escalation_order_id} (symbol_code={symbol_code})"
+                )
             filled_qty = status_result.filled_qty if status_result.filled_qty is not None else qty
 
             apply_fill(
                 conn,
                 order_id=escalation_order_id,
-                filled_price=filled_price,
+                filled_price=status_result.filled_price,
                 filled_qty=filled_qty,
             )
             conn.commit()

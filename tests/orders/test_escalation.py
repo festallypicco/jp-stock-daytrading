@@ -101,6 +101,33 @@ class TestEscalateToMarket(unittest.TestCase):
             halts[0], ("INFRA", "ESCALATION_FAILED_UNKNOWN", None, 1)
         )
 
+    def test_escalation_success_fills_and_creates_trade(self) -> None:
+        broker = MockBrokerClient(initial_prices={_SYMBOL_CODE: 1080.0})
+
+        escalation_order_id = escalate_to_market(self.conn, broker, "order-tp-1")
+
+        order_row = self.conn.execute(
+            "SELECT status, order_type, price FROM orders WHERE order_id = ?",
+            (escalation_order_id,),
+        ).fetchone()
+        self.assertEqual(order_row, ("FILLED", "MARKET", 1080.0))
+
+        position_row = self.conn.execute(
+            "SELECT status, qty FROM positions WHERE position_id = 'pos-1'"
+        ).fetchone()
+        self.assertEqual(position_row, ("CLOSED", 0))
+
+        trades = self.conn.execute(
+            "SELECT exit_order_id, entry_price, exit_price, qty, pnl FROM trades"
+        ).fetchall()
+        self.assertEqual(len(trades), 1)
+        exit_order_id, entry_price, exit_price, qty, pnl = trades[0]
+        self.assertEqual(exit_order_id, escalation_order_id)
+        self.assertEqual(entry_price, 1000.0)
+        self.assertEqual(exit_price, 1080.0)
+        self.assertEqual(qty, 100)
+        self.assertEqual(pnl, (1080.0 - 1000.0) * 100)
+
 
 if __name__ == "__main__":
     unittest.main()
