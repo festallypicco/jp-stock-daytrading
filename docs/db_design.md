@@ -1,6 +1,6 @@
 # DB設計書（スキーマ＋運用方針）
 
-AI議論による議題1〜5の結論、および命名棚卸しの結果を反映した確定版です。
+AI議論による議題1〜8の結論、および命名棚卸しの結果を反映した確定版です。
 `docs/db_design.md` としてリポジトリに格納する想定です。
 
 ## 1. symbols — 対象銘柄マスタ（実行時マスタ）
@@ -92,20 +92,20 @@ CREATE TABLE IF NOT EXISTS watchlist_daily (
 
 ```sql
 CREATE TABLE IF NOT EXISTS orders (
-    order_id             TEXT PRIMARY KEY,        -- UUID v7
-    broker_order_id      TEXT,
-    escalated_from_order_id TEXT REFERENCES orders(order_id),  -- ★追加：エスカレーション元の注文ID（成行再発注時のみ非NULL）
-    symbol_code          TEXT NOT NULL REFERENCES symbols(code),
-    trade_date           TEXT NOT NULL,
-    side                  TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
-    position_type         TEXT NOT NULL CHECK (position_type IN ('SPOT', 'MARGIN')),
-    order_role             TEXT NOT NULL CHECK (order_role IN ('ENTRY', 'TP', 'SL', 'FORCE_EXIT')),
-    order_type              TEXT NOT NULL CHECK (order_type IN ('LIMIT', 'MARKET')),  -- ★追加
-    status                   TEXT NOT NULL CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED', 'FAILED', 'MANUAL_REQUIRED')),
-    qty                       INTEGER NOT NULL,
-    price                     REAL,
-    created_at                TEXT NOT NULL,
-    updated_at                TEXT NOT NULL
+    order_id                TEXT PRIMARY KEY,        -- UUID v7
+    broker_order_id         TEXT,
+    escalated_from_order_id TEXT REFERENCES orders(order_id),  -- エスカレーション元の注文ID（成行再発注時のみ非NULL）
+    symbol_code             TEXT NOT NULL REFERENCES symbols(code),
+    trade_date               TEXT NOT NULL,
+    side                       TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    position_type               TEXT NOT NULL CHECK (position_type IN ('SPOT', 'MARGIN')),
+    order_role                   TEXT NOT NULL CHECK (order_role IN ('ENTRY', 'TP', 'SL', 'FORCE_EXIT')),
+    order_type                    TEXT NOT NULL CHECK (order_type IN ('LIMIT', 'MARKET')),
+    status                         TEXT NOT NULL CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED', 'FAILED', 'MANUAL_REQUIRED')),
+    qty                             INTEGER NOT NULL,
+    price                            REAL,
+    created_at                        TEXT NOT NULL,
+    updated_at                         TEXT NOT NULL
 );
 ```
 
@@ -116,39 +116,49 @@ CREATE TABLE IF NOT EXISTS orders (
 
 ```sql
 CREATE TABLE IF NOT EXISTS positions (
-    position_id     TEXT PRIMARY KEY,        -- UUID v7
-    symbol_code     TEXT NOT NULL REFERENCES symbols(code),
-    qty             INTEGER NOT NULL,
-    entry_price     REAL NOT NULL,
-    status          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
-    opened_at       TEXT NOT NULL,
-    closed_at       TEXT
+    position_id            TEXT PRIMARY KEY,        -- UUID v7
+    symbol_code             TEXT NOT NULL REFERENCES symbols(code),
+    qty                       INTEGER NOT NULL,
+    entry_price                REAL NOT NULL,
+    entry_oir_rank_bucket        TEXT,                -- エントリー時点のOIRランクバケツ
+    entry_gap_rate_bucket         TEXT,                -- エントリー時点の寄り付きギャップ率バケツ
+    status                          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
+    opened_at                        TEXT NOT NULL,
+    closed_at                         TEXT
 );
 ```
+
+- `entry_oir_rank_bucket`/`entry_gap_rate_bucket`：エントリー約定時に記録し、決済確定時に`trades`へコピーする
 
 ## 8. trades — 決済済みトレード実績
 
 ```sql
 CREATE TABLE IF NOT EXISTS trades (
-    trade_id              TEXT PRIMARY KEY,   -- UUID v7
-    symbol_code           TEXT NOT NULL REFERENCES symbols(code),
-    trade_date            TEXT NOT NULL,
-    side                   TEXT NOT NULL,
-    entry_price             REAL NOT NULL,
-    exit_price               REAL NOT NULL,
-    qty                      INTEGER NOT NULL,
-    pnl                      REAL NOT NULL,
-    oir_rank_bucket          TEXT NOT NULL,
-    gap_rate_bucket          TEXT NOT NULL,
-    jibai_value              REAL,
-    jibai_label              TEXT CHECK (jibai_label IN ('強', '平', '弱')),
-    kill_flag                INTEGER NOT NULL DEFAULT 0,
-    mfe                      REAL,
-    mae                      REAL,
-    settlement_9_30_price    REAL,
-    created_at               TEXT NOT NULL
+    trade_id                TEXT PRIMARY KEY,   -- UUID v7
+    position_id               TEXT REFERENCES positions(position_id),
+    exit_order_id               TEXT REFERENCES orders(order_id),
+    symbol_code                  TEXT NOT NULL REFERENCES symbols(code),
+    trade_date                    TEXT NOT NULL,
+    side                            TEXT NOT NULL,
+    entry_price                      REAL NOT NULL,
+    exit_price                        REAL NOT NULL,
+    qty                                 INTEGER NOT NULL,
+    pnl                                  REAL NOT NULL,
+    oir_rank_bucket                       TEXT NOT NULL,
+    gap_rate_bucket                        TEXT NOT NULL,
+    jibai_value                             REAL,
+    jibai_label                              TEXT CHECK (jibai_label IN ('強', '平', '弱')),
+    kill_flag                                 INTEGER NOT NULL DEFAULT 0,
+    mfe                                        REAL,
+    mae                                         REAL,
+    settlement_9_30_price                        REAL,
+    created_at                                    TEXT NOT NULL
 );
 ```
+
+- `position_id`：どのポジションの決済かを追跡（手動対応時の突き合わせ用）
+- `exit_order_id`：決済を確定させた`orders`レコードへの参照
+- `apply_fill`時に`orders`/`positions`更新と同一トランザクションで即時INSERTし、`mfe`/`mae`/`settlement_9_30_price`は`NULL`のまま保存。9:30以降の冪等なバッチ（`WHERE mfe IS NULL`等）でUPDATEする
 
 ## 9. system_halts — システム監視
 
@@ -163,11 +173,12 @@ CREATE TABLE IF NOT EXISTS system_halts (
     created_at                 TEXT NOT NULL,
     updated_at                  TEXT NOT NULL,
     resolved_at                  TEXT
-);```
+);
+```
 
-**稼働判定ロジック**：`SELECT COUNT(*) FROM system_halts WHERE resolved_at IS NULL AND symbol_code IS NULL` が1件以上ならシステム全体の新規エントリーを停止。銘柄単位の停止は`symbol_code`を条件に加えて判定する
+**稼働判定ロジック**：`SELECT COUNT(*) FROM system_halts WHERE resolved_at IS NULL AND symbol_code IS NULL` が1件以上ならシステム全体の新規エントリーを停止。銘柄単位の停止は`symbol_code`を条件に加えて判定する。決済系専用に`halt_category = 'INFRA' AND resolved_at IS NULL`の有無のみを見る`has_active_infra_halt()`判定も用意する
 
-**重複排除ルール**：新規halt発生時、同一`reason_code`かつ`resolved_at IS NULL`の未解決レコードが既に存在する場合はINSERTせず、既存レコードの`updated_at`（列として追加が必要）を更新するのみとする。`halt_category`単位ではなく`reason_code`単位で判定すること（同カテゴリ内の別`reason_code`は独立して記録する）
+**重複排除ルール**：新規halt発生時、同一`reason_code`かつ`resolved_at IS NULL`の未解決レコードが既に存在する場合はINSERTせず、既存レコードの`updated_at`を更新するのみとする。`halt_category`単位ではなく`reason_code`単位で判定すること
 
 **解除条件**：
 - `halt_category = 'INFRA'`：Telegramコマンド（`/clear_infra`, `/clear_market`, `/clear_all`）による手動解除のみ。自動復帰ロジックは実装しない
@@ -185,6 +196,14 @@ CREATE TABLE IF NOT EXISTS system_halts (
 - インフラ共通エラー（API接続途絶、連続タイムアウト等）は`symbol_code`をNULLにして記録し、システム全体の新規エントリーを停止する
 - `orders`が`FILLED`になるタイミングで`positions`（`qty`、`status`）をアトミックに更新する。大引け後バッチ（15:15）で実際の建玉一覧と突合し、不整合があれば`MANUAL_REQUIRED`にする
 
+## orders/positions ステートマシンの運用方針（議題8）
+
+- 決済系注文（`TP`/`SL`/`FORCE_EXIT`）の発注直前に`system_halts`をチェックする
+  - アクティブな停止要因が`MARKET`のみ：チェックをバイパスし発注を実行する
+  - アクティブな停止要因に`INFRA`が1件でも含まれる：発注を保留する
+- エスカレーション（成行への1回限りの再発注）も失敗した場合：
+  - APIエラー内容が銘柄固有の問題（制限値幅・売買停止措置等）と明確に判別できた場合のみ、銘柄単位（`symbol_code`指定）の停止として記録する
+  - タイムアウト・HTTPエラー・パース不能な未知のエラー等、判別できない場合は必ずシステム全体（`symbol_code=NULL`）のINFRA haltにフォールバックする
 
 ## 10. eod_checks — 終業点検バッチ結果（15:15）
 
@@ -247,3 +266,6 @@ CREATE TABLE IF NOT EXISTS walk_forward_results (
 | DB初期化 | Docker起動時自動チェック＆安全作成（IF NOT EXISTS）、破壊的操作は全廃、新規作成時はアラート |
 | 永続化 | 親ディレクトリ単位のホストマウント |
 | バックアップ | eod_process末尾でオンラインスナップショット、無期限保持 |
+| キルスイッチ／インフラhalt | `system_halts`に統合。`halt_category`（MARKET/INFRA）で区別し重複排除は`reason_code`単位 |
+| 決済系のhalt扱い | INFRA要因のみ発注保留、MARKET要因はバイパスして決済を優先 |
+| tradesの記録タイミング | 約定確定時に即時INSERT（mfe/mae等はNULL）、9:30以降の冪等バッチでUPDATE |
