@@ -5,12 +5,11 @@
 
 from __future__ import annotations
 
-import secrets
 import sqlite3
-import time
-import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from src.common.ids import uuid7
 
 _JST = ZoneInfo("Asia/Tokyo")
 
@@ -19,21 +18,6 @@ _EXIT_ROLES = ("TP", "SL", "FORCE_EXIT")
 
 def _now_jst() -> str:
     return datetime.now(_JST).isoformat()
-
-
-def _uuid7() -> str:
-    """RFC 9562 準拠の UUID v7 を生成する（標準ライブラリのみで実装）。"""
-    unix_ts_ms = int(time.time() * 1000) & 0xFFFFFFFFFFFF
-    rand_a = secrets.randbits(12)
-    rand_b = secrets.randbits(62)
-    value = (
-        (unix_ts_ms << 80)
-        | (0x7 << 76)
-        | (rand_a << 64)
-        | (0b10 << 62)
-        | rand_b
-    )
-    return str(uuid.UUID(int=value))
 
 
 def apply_fill(
@@ -105,7 +89,7 @@ def _apply_entry_fill(
     gap_rate_bucket: str | None,
     now: str,
 ) -> None:
-    position_id = _uuid7()
+    position_id = uuid7()
     conn.execute(
         """
         INSERT INTO positions (
@@ -184,7 +168,7 @@ def _apply_exit_fill(
         )
 
     pnl = (filled_price - entry_price) * filled_qty
-    trade_id = _uuid7()
+    trade_id = uuid7()
     conn.execute(
         """
         INSERT INTO trades (
