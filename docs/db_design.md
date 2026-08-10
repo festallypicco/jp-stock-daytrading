@@ -92,22 +92,25 @@ CREATE TABLE IF NOT EXISTS watchlist_daily (
 
 ```sql
 CREATE TABLE IF NOT EXISTS orders (
-    order_id        TEXT PRIMARY KEY,        -- UUID v7
-    broker_order_id TEXT,                    -- 立花証券側の注文番号（レスポンス受領後にUPDATE）
-    symbol_code     TEXT NOT NULL REFERENCES symbols(code),
-    trade_date      TEXT NOT NULL,
-    side            TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
-    position_type   TEXT NOT NULL CHECK (position_type IN ('SPOT', 'MARGIN')),
-    order_role      TEXT NOT NULL CHECK (order_role IN ('ENTRY', 'TP', 'SL', 'FORCE_EXIT')),
-    status          TEXT NOT NULL CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED', 'FAILED', 'MANUAL_REQUIRED')),
-    qty             INTEGER NOT NULL,
-    price           REAL,
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
+    order_id             TEXT PRIMARY KEY,        -- UUID v7
+    broker_order_id      TEXT,
+    escalated_from_order_id TEXT REFERENCES orders(order_id),  -- ★追加：エスカレーション元の注文ID（成行再発注時のみ非NULL）
+    symbol_code          TEXT NOT NULL REFERENCES symbols(code),
+    trade_date           TEXT NOT NULL,
+    side                  TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    position_type         TEXT NOT NULL CHECK (position_type IN ('SPOT', 'MARGIN')),
+    order_role             TEXT NOT NULL CHECK (order_role IN ('ENTRY', 'TP', 'SL', 'FORCE_EXIT')),
+    order_type              TEXT NOT NULL CHECK (order_type IN ('LIMIT', 'MARKET')),  -- ★追加
+    status                   TEXT NOT NULL CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED', 'FAILED', 'MANUAL_REQUIRED')),
+    qty                       INTEGER NOT NULL,
+    price                     REAL,
+    created_at                TEXT NOT NULL,
+    updated_at                TEXT NOT NULL
 );
 ```
 
-- `order_id`はAPI呼び出し前に生成・PENDING保存。`broker_order_id`はレスポンス受領後にUPDATE（発注前障害も追跡可能）
+- `order_type`：指値/成行の区別。決済系のエスカレーション時は`MARKET`で新規レコードを作成する
+- `escalated_from_order_id`：元の失敗注文の`order_id`を指す自己参照。エスカレーションでない通常注文は`NULL`
 
 ## 7. positions — 保有ポジション
 
@@ -147,17 +150,41 @@ CREATE TABLE IF NOT EXISTS trades (
 );
 ```
 
-## 9. kill_switch_events — キルスイッチ発動ログ
+## 9. system_halts — システム監視
 
 ```sql
-CREATE TABLE IF NOT EXISTS kill_switch_events (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    trade_date      TEXT NOT NULL,
-    reason          TEXT NOT NULL,
-    detail_json     TEXT,
-    triggered_at    TEXT NOT NULL
-);
-```
+CREATE TABLE IF NOT EXISTS system_halts (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    halt_category         TEXT NOT NULL CHECK (halt_category IN ('MARKET', 'INFRA')),
+    reason_code            TEXT NOT NULL,
+    description             TEXT,
+    requires_manual_clear    INTEGER NOT NULL,
+    symbol_code               TEXT REFERENCES symbols(code),
+    created_at                 TEXT NOT NULL,
+    updated_at                  TEXT NOT NULL,
+    resolved_at                  TEXT
+);```
+
+**稼働判定ロジック**：`SELECT COUNT(*) FROM system_halts WHERE resolved_at IS NULL AND symbol_code IS NULL` が1件以上ならシステム全体の新規エントリーを停止。銘柄単位の停止は`symbol_code`を条件に加えて判定する
+
+**重複排除ルール**：新規halt発生時、同一`reason_code`かつ`resolved_at IS NULL`の未解決レコードが既に存在する場合はINSERTせず、既存レコードの`updated_at`（列として追加が必要）を更新するのみとする。`halt_category`単位ではなく`reason_code`単位で判定すること（同カテゴリ内の別`reason_code`は独立して記録する）
+
+**解除条件**：
+- `halt_category = 'INFRA'`：Telegramコマンド（`/clear_infra`, `/clear_market`, `/clear_all`）による手動解除のみ。自動復帰ロジックは実装しない
+- `halt_category = 'MARKET'`：解除条件は未確定（別途検討）。現時点では手動解除のみ実装する
+
+## 注文状態遷移の運用方針（議題6）
+
+- `ENTRY`注文が`FAILED`になった場合、リトライは行わない。そのシグナルは見送りとして記録し終了する
+- 決済系注文（`TP`/`SL`/`FORCE_EXIT`）が失敗・拒否された場合、`order_type='MARKET'`で新規注文（`escalated_from_order_id`に元の`order_id`を設定）を1回のみ自動発行する
+- 成行エスカレーションも失敗した場合、当該注文・ポジションを`MANUAL_REQUIRED`にし、それ以上の自動リトライは行わない
+- `FAILED`：送信前にシステム内部で検知したエラー、または証券会社APIから明確な拒否レスポンスを受領した場合
+- `MANUAL_REQUIRED`：送信後にレスポンスが確認できない場合、成行エスカレーションも失敗した場合、建玉不整合を検知した場合
+- APIレスポンス待ちの上限は5秒（`order_role`によらず一律）。タイムアウト時は注文照会APIを1回のみ試行（照会タイムアウト3秒）し、状態が特定できなければ`MANUAL_REQUIRED`
+- 銘柄固有エラー（呼値・売買単位エラー等）は`system_halts`に`symbol_code`を指定して記録し、当該銘柄のみ新規エントリー対象から除外する
+- インフラ共通エラー（API接続途絶、連続タイムアウト等）は`symbol_code`をNULLにして記録し、システム全体の新規エントリーを停止する
+- `orders`が`FILLED`になるタイミングで`positions`（`qty`、`status`）をアトミックに更新する。大引け後バッチ（15:15）で実際の建玉一覧と突合し、不整合があれば`MANUAL_REQUIRED`にする
+
 
 ## 10. eod_checks — 終業点検バッチ結果（15:15）
 

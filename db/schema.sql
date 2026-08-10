@@ -55,18 +55,20 @@ CREATE TABLE IF NOT EXISTS watchlist_daily (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-    order_id        TEXT PRIMARY KEY,        -- UUID v7
-    broker_order_id TEXT,                    -- 立花証券側の注文番号（レスポンス受領後にUPDATE）
-    symbol_code     TEXT NOT NULL REFERENCES symbols(code),
-    trade_date      TEXT NOT NULL,
-    side            TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
-    position_type   TEXT NOT NULL CHECK (position_type IN ('SPOT', 'MARGIN')),
-    order_role      TEXT NOT NULL CHECK (order_role IN ('ENTRY', 'TP', 'SL', 'FORCE_EXIT')),
-    status          TEXT NOT NULL CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED', 'FAILED', 'MANUAL_REQUIRED')),
-    qty             INTEGER NOT NULL,
-    price           REAL,
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
+    order_id             TEXT PRIMARY KEY,        -- UUID v7
+    broker_order_id      TEXT,
+    escalated_from_order_id TEXT REFERENCES orders(order_id),  -- エスカレーション元の注文ID（成行再発注時のみ非NULL）
+    symbol_code          TEXT NOT NULL REFERENCES symbols(code),
+    trade_date           TEXT NOT NULL,
+    side                  TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+    position_type         TEXT NOT NULL CHECK (position_type IN ('SPOT', 'MARGIN')),
+    order_role             TEXT NOT NULL CHECK (order_role IN ('ENTRY', 'TP', 'SL', 'FORCE_EXIT')),
+    order_type              TEXT NOT NULL CHECK (order_type IN ('LIMIT', 'MARKET')),
+    status                   TEXT NOT NULL CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED', 'FAILED', 'MANUAL_REQUIRED')),
+    qty                       INTEGER NOT NULL,
+    price                     REAL,
+    created_at                TEXT NOT NULL,
+    updated_at                TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS positions (
@@ -99,12 +101,16 @@ CREATE TABLE IF NOT EXISTS trades (
     created_at               TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS kill_switch_events (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    trade_date      TEXT NOT NULL,
-    reason          TEXT NOT NULL,
-    detail_json     TEXT,
-    triggered_at    TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS system_halts (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    halt_category         TEXT NOT NULL CHECK (halt_category IN ('MARKET', 'INFRA')),
+    reason_code            TEXT NOT NULL,
+    description             TEXT,
+    requires_manual_clear    INTEGER NOT NULL,
+    symbol_code               TEXT REFERENCES symbols(code),
+    created_at                 TEXT NOT NULL,
+    updated_at                  TEXT NOT NULL,
+    resolved_at                  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS eod_checks (
