@@ -11,6 +11,11 @@ def send_telegram_alert(message: str) -> None:
     pass
 
 
+def send_telegram_report(message: str) -> None:
+    # TODO: Telegram Reportsチャンネルへの実送信を実装する
+    pass
+
+
 def init_db(db_path: str) -> None:
     """schema.sql を適用してテーブルを作成する。新規DBファイル時のみ警告通知する。"""
     db_file = Path(db_path)
