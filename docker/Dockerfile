@@ -18,6 +18,10 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin appuser \
 
 COPY --from=builder /install /usr/local
 
+COPY --chown=appuser:appuser src/ /app/src/
+COPY --chown=appuser:appuser db/ /app/db/
+COPY --chown=appuser:appuser config/ /app/config/
+
 USER appuser
 
 CMD ["python", "-c", "print('container started')"]
