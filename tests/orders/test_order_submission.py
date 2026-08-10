@@ -11,7 +11,13 @@ from db.initializer import init_db
 from db.system_halt import record_halt
 from src.broker.base import BrokerClient
 from src.broker.mock_client import MockBrokerClient
-from src.broker.types import BrokerPosition, OrderRequest, OrderResult, OrderStatusResult
+from src.broker.types import (
+    BoardSnapshot,
+    BrokerPosition,
+    OrderRequest,
+    OrderResult,
+    OrderStatusResult,
+)
 from src.orders.order_submission import ExitOrderHeld, submit_entry_order, submit_exit_order
 
 _SYMBOL_CODE = "7203"
@@ -29,6 +35,12 @@ class _ExplodingBroker(BrokerClient):
 
     def get_positions(self) -> list[BrokerPosition]:
         raise AssertionError("get_positions should not be called when halted")
+
+    def get_quote(self, symbol_code: str) -> float:
+        raise AssertionError("get_quote should not be called when halted")
+
+    def get_board(self, symbol_code: str) -> BoardSnapshot:
+        raise AssertionError("get_board should not be called when halted")
 
 
 class TestSubmitEntryOrder(unittest.TestCase):

@@ -6,7 +6,18 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from src.broker.base import BrokerClient
-from src.broker.types import BrokerPosition, OrderRequest, OrderResult, OrderStatusResult
+from src.broker.types import (
+    BoardLevel,
+    BoardSnapshot,
+    BrokerPosition,
+    OrderRequest,
+    OrderResult,
+    OrderStatusResult,
+)
+
+_DEFAULT_QUOTE_PRICE = 1000.0
+_BOARD_DEPTH = 10
+_BOARD_VOLUME = 1000
 
 
 @dataclass
@@ -75,3 +86,18 @@ class MockBrokerClient(BrokerClient):
 
     def get_positions(self) -> list[BrokerPosition]:
         return []
+
+    def get_quote(self, symbol_code: str) -> float:
+        return self._last_price_by_symbol.get(symbol_code, _DEFAULT_QUOTE_PRICE)
+
+    def get_board(self, symbol_code: str) -> BoardSnapshot:
+        base_price = self.get_quote(symbol_code)
+        asks = [
+            BoardLevel(level=level, price=base_price + level, volume=_BOARD_VOLUME)
+            for level in range(1, _BOARD_DEPTH + 1)
+        ]
+        bids = [
+            BoardLevel(level=level, price=base_price - level, volume=_BOARD_VOLUME)
+            for level in range(1, _BOARD_DEPTH + 1)
+        ]
+        return BoardSnapshot(symbol_code=symbol_code, bids=bids, asks=asks)

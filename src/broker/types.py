@@ -36,3 +36,17 @@ class BrokerPosition:
     symbol_code: str
     qty: int
     average_price: float
+
+
+@dataclass(frozen=True)
+class BoardLevel:
+    level: int
+    price: float
+    volume: int
+
+
+@dataclass(frozen=True)
+class BoardSnapshot:
+    symbol_code: str
+    bids: list[BoardLevel]  # 10階層、level=1が最良気配
+    asks: list[BoardLevel]  # 10階層、level=1が最良気配

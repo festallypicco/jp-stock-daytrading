@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from src.broker.types import BrokerPosition, OrderRequest, OrderResult, OrderStatusResult
+from src.broker.types import (
+    BoardSnapshot,
+    BrokerPosition,
+    OrderRequest,
+    OrderResult,
+    OrderStatusResult,
+)
 
 
 class BrokerClient(ABC):
@@ -28,5 +34,21 @@ class BrokerClient(ABC):
     def get_positions(self) -> list[BrokerPosition]:
         """保有ポジション一覧を取得する。
 
+        実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
+        """
+
+    @abstractmethod
+    def get_quote(self, symbol_code: str) -> float:
+        """指定銘柄の現在値（単一価格）を取得する。
+
+        単一価格のみが必要な場面向け（例: TOPIX前日比判定）。
+        実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
+        """
+
+    @abstractmethod
+    def get_board(self, symbol_code: str) -> BoardSnapshot:
+        """指定銘柄の板情報（気配値10階層）を取得する。
+
+        板情報全体が必要な場面向け（例: 日中の板情報収集バッチ）。
         実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
         """

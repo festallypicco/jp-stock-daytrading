@@ -38,6 +38,27 @@ class TestMockBrokerClient(unittest.TestCase):
         self.assertIsNone(result.broker_order_id)
         self.assertEqual(result.rejected_reason, "MOCK_FORCED_REJECT")
 
+    def test_get_quote_returns_initial_price(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1234.0})
+
+        self.assertEqual(client.get_quote("7203"), 1234.0)
+
+    def test_get_quote_returns_default_for_unknown_symbol(self) -> None:
+        client = MockBrokerClient()
+
+        self.assertEqual(client.get_quote("9999"), 1000.0)
+
+    def test_get_board_returns_ten_levels_around_quote(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1000.0})
+
+        board = client.get_board("7203")
+        quote = client.get_quote("7203")
+
+        self.assertEqual(len(board.bids), 10)
+        self.assertEqual(len(board.asks), 10)
+        self.assertGreater(board.asks[0].price, quote)
+        self.assertGreater(quote, board.bids[0].price)
+
 
 if __name__ == "__main__":
     unittest.main()
