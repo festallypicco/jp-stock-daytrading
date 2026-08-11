@@ -61,10 +61,10 @@ class MockBrokerClient(BrokerClient):
             # 指値がPENDINGのまま残ることが、以降の現実的な約定判定の前提となる）。
             fill_price = request.price
         else:
-            # 成行注文（price=None）：直近に記録された同一銘柄の価格を約定価格とみなす。
-            # 該当銘柄の価格情報が一度も無い場合のみ None のままとする（通常のフローでは
-            # 起こらないはずの異常系として許容する）。
-            fill_price = self._last_price_by_symbol.get(request.symbol_code)
+            # 成行注文（price=None）：現在値を約定価格とみなす。get_quote()は
+            # 価格情報が一度も記録されていない銘柄には _DEFAULT_QUOTE_PRICE を返すため、
+            # ここでNoneになることはない。
+            fill_price = self.get_quote(request.symbol_code)
 
         broker_order_id = f"MOCK-{uuid4().hex[:8]}"
         self._order_states[broker_order_id] = _OrderState(

@@ -59,6 +59,27 @@ class TestMockBrokerClient(unittest.TestCase):
         self.assertGreater(board.asks[0].price, quote)
         self.assertGreater(quote, board.bids[0].price)
 
+    def test_market_order_fill_price_defaults_to_default_quote_price_when_unknown(
+        self,
+    ) -> None:
+        client = MockBrokerClient()
+        result = client.place_order(
+            OrderRequest(
+                symbol_code="9999",
+                side="BUY",
+                position_type="SPOT",
+                order_role="ENTRY",
+                order_type="MARKET",
+                qty=100,
+                price=None,
+            )
+        )
+
+        status = client.get_order_status(result.broker_order_id)
+
+        self.assertEqual(status.status, "FILLED")
+        self.assertEqual(status.filled_price, 1000.0)
+
     def test_get_tick_increments_cumulative_volume(self) -> None:
         client = MockBrokerClient(initial_prices={"7203": 1234.0})
 
