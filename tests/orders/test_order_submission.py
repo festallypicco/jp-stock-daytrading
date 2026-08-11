@@ -14,6 +14,7 @@ from src.broker.mock_client import MockBrokerClient
 from src.broker.types import (
     BoardSnapshot,
     BrokerPosition,
+    DailyBar,
     OrderRequest,
     OrderResult,
     OrderStatusResult,
@@ -51,6 +52,9 @@ class _ExplodingBroker(BrokerClient):
 
     def cancel_order(self, broker_order_id: str) -> bool:
         raise AssertionError("cancel_order should not be called when halted")
+
+    def get_daily_bars(self, symbol_code: str, days: int) -> list[DailyBar]:
+        raise AssertionError("get_daily_bars should not be called when halted")
 
 
 class TestSubmitEntryOrder(unittest.TestCase):

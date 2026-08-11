@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from src.broker.mock_client import MockBrokerClient
-from src.broker.types import OrderRequest
+from src.broker.types import DailyBar, OrderRequest
 
 
 def _sample_request() -> OrderRequest:
@@ -201,6 +201,36 @@ class TestMockBrokerClient(unittest.TestCase):
         self.assertEqual(second_status.status, "FILLED")
         self.assertEqual(second_status.filled_price, 1050.0)
         self.assertEqual(second_status.filled_qty, 100)
+
+    def test_get_daily_bars_returns_injected_bars_trimmed_to_last_days(self) -> None:
+        bars = [
+            DailyBar(
+                trade_date=f"2026-08-{day:02d}",
+                open=1000.0 + day,
+                high=1005.0 + day,
+                low=995.0 + day,
+                close=1000.0 + day,
+                volume=1000 * day,
+            )
+            for day in range(1, 11)
+        ]
+        client = MockBrokerClient(daily_bars={"7203": bars})
+
+        result = client.get_daily_bars("7203", days=3)
+
+        self.assertEqual(result, bars[-3:])
+        self.assertEqual([bar.trade_date for bar in result], ["2026-08-08", "2026-08-09", "2026-08-10"])
+
+    def test_get_daily_bars_generates_dummy_bars_when_not_injected(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1000.0})
+
+        result = client.get_daily_bars("7203", days=5)
+
+        self.assertEqual(len(result), 5)
+        for bar in result:
+            self.assertEqual(bar.close, 1000.0)
+            self.assertEqual(bar.high, 1005.0)
+            self.assertEqual(bar.low, 995.0)
 
 
 if __name__ == "__main__":

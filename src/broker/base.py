@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from src.broker.types import (
     BoardSnapshot,
     BrokerPosition,
+    DailyBar,
     OrderRequest,
     OrderResult,
     OrderStatusResult,
@@ -73,6 +74,14 @@ class BrokerClient(ABC):
     @abstractmethod
     def cancel_order(self, broker_order_id: str) -> bool:
         """指定注文をキャンセルする。成功時True、失敗時（既に約定済み等）False。
+
+        実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
+        """
+
+    @abstractmethod
+    def get_daily_bars(self, symbol_code: str, days: int) -> list[DailyBar]:
+        """直近days日分の確定済み日足OHLCを取得する（当日を含まない、
+        最新の営業日が末尾になるよう古い順に並べて返す）。
 
         実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
         """

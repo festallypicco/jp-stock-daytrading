@@ -57,3 +57,13 @@ class TickData:
     symbol_code: str
     price: float
     cumulative_volume: int  # 当日寄り付きからの累積出来高
+
+
+@dataclass(frozen=True)
+class DailyBar:
+    trade_date: str  # YYYY-MM-DD
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int

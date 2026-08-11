@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from src.broker.base import BrokerClient
 from src.broker.types import (
     BoardLevel,
     BoardSnapshot,
     BrokerPosition,
+    DailyBar,
     OrderRequest,
     OrderResult,
     OrderStatusResult,
     TickData,
 )
 
+_JST = ZoneInfo("Asia/Tokyo")
+
 _DEFAULT_QUOTE_PRICE = 1000.0
 _BOARD_DEPTH = 10
 _BOARD_VOLUME = 1000
 _TICK_VOLUME_INCREMENT = 500
+_DUMMY_DAILY_BAR_VOLUME = 10000
+_DUMMY_DAILY_BAR_HIGH_LOW_OFFSET = 5.0
 
 
 @dataclass
@@ -38,6 +45,7 @@ class MockBrokerClient(BrokerClient):
         force_reject: bool = False,
         initial_prices: dict[str, float] | None = None,
         initial_balance: float = 1_000_000.0,
+        daily_bars: dict[str, list[DailyBar]] | None = None,
     ) -> None:
         self._force_reject = force_reject
         self._order_states: dict[str, _OrderState] = {}
@@ -46,6 +54,9 @@ class MockBrokerClient(BrokerClient):
         )
         self._cumulative_volume_by_symbol: dict[str, int] = {}
         self._initial_balance = initial_balance
+        self._daily_bars: dict[str, list[DailyBar]] = (
+            dict(daily_bars) if daily_bars else {}
+        )
 
     def place_order(self, request: OrderRequest) -> OrderResult:
         if self._force_reject:
@@ -169,3 +180,25 @@ class MockBrokerClient(BrokerClient):
 
         state.status = "CANCELLED"
         return True
+
+    def get_daily_bars(self, symbol_code: str, days: int) -> list[DailyBar]:
+        injected_bars = self._daily_bars.get(symbol_code)
+        if injected_bars is not None:
+            return injected_bars[-days:]
+
+        return self._generate_dummy_daily_bars(symbol_code, days)
+
+    def _generate_dummy_daily_bars(self, symbol_code: str, days: int) -> list[DailyBar]:
+        base_price = self.get_quote(symbol_code)
+        today = datetime.now(_JST).date()
+        return [
+            DailyBar(
+                trade_date=(today - timedelta(days=offset)).strftime("%Y-%m-%d"),
+                open=base_price,
+                high=base_price + _DUMMY_DAILY_BAR_HIGH_LOW_OFFSET,
+                low=base_price - _DUMMY_DAILY_BAR_HIGH_LOW_OFFSET,
+                close=base_price,
+                volume=_DUMMY_DAILY_BAR_VOLUME,
+            )
+            for offset in range(days, 0, -1)
+        ]

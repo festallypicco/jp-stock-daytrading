@@ -9,6 +9,7 @@ from src.broker.mock_client import MockBrokerClient
 from src.broker.types import (
     BoardSnapshot,
     BrokerPosition,
+    DailyBar,
     OrderRequest,
     OrderResult,
     OrderStatusResult,
@@ -42,6 +43,9 @@ class _AlwaysFailingBroker(BrokerClient):
         raise NotImplementedError
 
     def cancel_order(self, broker_order_id: str) -> bool:
+        raise NotImplementedError
+
+    def get_daily_bars(self, symbol_code: str, days: int) -> list[DailyBar]:
         raise NotImplementedError
 
 
