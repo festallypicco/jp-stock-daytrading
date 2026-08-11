@@ -176,7 +176,7 @@ def run_morning_batch(conn: sqlite3.Connection, broker: BrokerClient | None = No
         send_telegram_report("[INFO] システム停止中のため本日の新規エントリーをスキップ")
         return
 
-    decisions = decide_entries(conn, watchlist, lot_multiplier, vwap_results)
+    decisions = decide_entries(conn, watchlist, lot_multiplier, vwap_results, broker, today)
     for decision in decisions:
         submit_entry_order(
             conn,
