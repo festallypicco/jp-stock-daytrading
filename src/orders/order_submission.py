@@ -158,7 +158,7 @@ def submit_exit_order(
 
     _insert_order(
         conn, order_id, request, trade_date,
-        status="PENDING", order_type="LIMIT", now=_now_jst(),
+        status="PENDING", order_type=request.order_type, now=_now_jst(),
     )
     conn.commit()
 

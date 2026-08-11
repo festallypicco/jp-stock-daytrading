@@ -211,14 +211,13 @@ class TestProcessPositionTriggersStopLoss(_BaseIntradayMonitorTest):
 
         _process_position(self.conn, broker, position_row)
 
-        # order_typeは既存のsubmit_exit_order()の仕様上'LIMIT'で記録される
-        # （下部の改善提案コメント参照）ため、ここではrole/status/priceのみ検証する
         sl_order = self.conn.execute(
-            "SELECT order_role, status, price FROM orders WHERE order_role = 'SL'"
+            "SELECT order_role, order_type, status, price FROM orders WHERE order_role = 'SL'"
         ).fetchone()
         self.assertIsNotNone(sl_order)
-        role, status, price = sl_order
+        role, order_type, status, price = sl_order
         self.assertEqual(role, "SL")
+        self.assertEqual(order_type, "MARKET")
         self.assertEqual(status, "FILLED")
         self.assertEqual(price, 985.0)
 
@@ -272,11 +271,12 @@ class TestForceExitAll(_BaseIntradayMonitorTest):
         _force_exit_all(self.conn, broker)
 
         order_row = self.conn.execute(
-            "SELECT order_role, status, price FROM orders WHERE order_role = 'FORCE_EXIT'"
+            "SELECT order_role, order_type, status, price FROM orders WHERE order_role = 'FORCE_EXIT'"
         ).fetchone()
         self.assertIsNotNone(order_row)
-        role, status, price = order_row
+        role, order_type, status, price = order_row
         self.assertEqual(role, "FORCE_EXIT")
+        self.assertEqual(order_type, "MARKET")
         self.assertEqual(status, "FILLED")
         self.assertEqual(price, 1010.0)
 

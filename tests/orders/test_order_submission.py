@@ -158,6 +158,16 @@ class TestSubmitExitOrder(unittest.TestCase):
             """,
             (_SYMBOL_CODE, "トヨタ自動車", _NOW, _NOW),
         )
+        self.conn.execute(
+            """
+            INSERT INTO positions (
+                position_id, symbol_code, qty, entry_price,
+                entry_oir_rank_bucket, entry_gap_rate_bucket,
+                status, opened_at, closed_at
+            ) VALUES ('pos-1', ?, 100, 1000.0, 'A', 'B', 'OPEN', ?, NULL)
+            """,
+            (_SYMBOL_CODE, _NOW),
+        )
         self.conn.commit()
 
     def tearDown(self) -> None:
@@ -186,6 +196,25 @@ class TestSubmitExitOrder(unittest.TestCase):
 
         orders_count = self.conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
         self.assertEqual(orders_count, 0)
+
+    def test_market_order_type_is_recorded_as_market_not_limit(self) -> None:
+        broker = MockBrokerClient(initial_prices={_SYMBOL_CODE: 1080.0})
+        request = OrderRequest(
+            symbol_code=_SYMBOL_CODE,
+            side="SELL",
+            position_type="SPOT",
+            order_role="SL",
+            order_type="MARKET",
+            qty=100,
+            price=None,
+        )
+
+        order_id = submit_exit_order(self.conn, broker, request)
+
+        order_row = self.conn.execute(
+            "SELECT order_type, status FROM orders WHERE order_id = ?", (order_id,)
+        ).fetchone()
+        self.assertEqual(order_row, ("MARKET", "FILLED"))
 
 
 if __name__ == "__main__":
