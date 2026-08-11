@@ -112,11 +112,12 @@ class TestSystemHaltedSkipsEntries(_BaseMorningTradeTest):
         )
         self.conn.commit()
 
+    @patch("src.batch.vwap_tracker.time.sleep")
     @patch("src.batch.morning_trade.time.sleep")
     @patch("src.batch.morning_trade.submit_entry_order")
     @patch("src.batch.morning_trade.send_telegram_report")
     def test_submit_entry_order_never_called_when_halted(
-        self, mock_report, mock_submit_entry_order, mock_sleep
+        self, mock_report, mock_submit_entry_order, mock_sleep, mock_vwap_sleep
     ) -> None:
         run_morning_batch(self.conn, broker=MockBrokerClient())
 

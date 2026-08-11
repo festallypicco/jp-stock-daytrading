@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from src.batch.vwap_tracker import VwapResult
 from src.broker.types import OrderRequest
 
 
@@ -19,6 +20,7 @@ def decide_entries(
     conn: sqlite3.Connection,
     watchlist: list[dict],
     lot_multiplier: float,
+    vwap_results: dict[str, VwapResult],
     max_slots: int = 5,
 ) -> list[EntryDecision]:
     """監視リストからエントリー対象を選定する。

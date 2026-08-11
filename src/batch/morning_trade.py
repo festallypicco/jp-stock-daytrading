@@ -13,6 +13,7 @@ from db.system_halt import is_system_halted, record_halt
 from src.batch.calendar import is_trading_day
 from src.batch.entry_selection import decide_entries
 from src.batch.topix_proxy import classify_topix_change, fetch_topix_price_with_retry
+from src.batch.vwap_tracker import track_vwap
 from src.broker.base import BrokerClient
 from src.broker.mock_client import MockBrokerClient
 from src.orders.order_submission import submit_entry_order
@@ -23,8 +24,12 @@ _JST = ZoneInfo("Asia/Tokyo")
 _DB_PATH = "data/app.db"
 
 _TOPIX_SYMBOL_CODE = "1306"
-_ENTRY_WAIT_TIME = dt_time(9, 4, 45)
+_MARKET_OPEN_WAIT_TIME = dt_time(9, 0, 0)
 _WATCHLIST_FRESHNESS_CUTOFF = dt_time(15, 0)
+_WATCHLIST_LIMIT = 10
+# track_vwap()のデフォルトnum_cycles=20に対応する最終サイクルのインデックス（9:04:45相当）。
+# track_vwap()呼び出し時にnum_cyclesを変更しない前提で成り立つ値のため、変更時は要見直し。
+_VWAP_FINAL_CYCLE_INDEX = 19
 
 
 def _now_jst() -> datetime:
@@ -35,13 +40,13 @@ def _today_jst_str() -> str:
     return _now_jst().strftime("%Y-%m-%d")
 
 
-def _wait_until_entry_time() -> None:
-    """9:04:45まで待機する。既に過ぎている場合は待機しない。"""
+def _wait_until_market_open() -> None:
+    """9:00まで待機する。既に過ぎている場合は待機しない。"""
     now = _now_jst()
     target = now.replace(
-        hour=_ENTRY_WAIT_TIME.hour,
-        minute=_ENTRY_WAIT_TIME.minute,
-        second=_ENTRY_WAIT_TIME.second,
+        hour=_MARKET_OPEN_WAIT_TIME.hour,
+        minute=_MARKET_OPEN_WAIT_TIME.minute,
+        second=_MARKET_OPEN_WAIT_TIME.second,
         microsecond=0,
     )
     remaining_sec = (target - now).total_seconds()
@@ -137,22 +142,15 @@ def run_morning_batch(conn: sqlite3.Connection, broker: BrokerClient | None = No
     if not _check_watchlist_freshness(conn, today):
         return
 
-    _wait_until_entry_time()
-
-    lot_multiplier = _determine_lot_multiplier(conn, broker, today)
-
-    if is_system_halted(conn):
-        send_telegram_report("[INFO] システム停止中のため本日の新規エントリーをスキップ")
-        return
-
     watchlist_rows = conn.execute(
         """
         SELECT symbol_code, rank, oir_eval_score, generated_at
         FROM watchlist_daily
         WHERE trade_date = ?
         ORDER BY rank ASC
+        LIMIT ?
         """,
-        (today,),
+        (today, _WATCHLIST_LIMIT),
     ).fetchall()
     watchlist = [
         {
@@ -163,8 +161,25 @@ def run_morning_batch(conn: sqlite3.Connection, broker: BrokerClient | None = No
         }
         for row in watchlist_rows
     ]
+    symbol_codes = [item["symbol_code"] for item in watchlist]
 
-    decisions = decide_entries(conn, watchlist, lot_multiplier)
+    _wait_until_market_open()
+
+    lot_multiplier_holder: dict[str, float] = {}
+
+    def _on_cycle(cycle_index: int) -> None:
+        if cycle_index == _VWAP_FINAL_CYCLE_INDEX:
+            lot_multiplier_holder["value"] = _determine_lot_multiplier(conn, broker, today)
+
+    vwap_results = track_vwap(broker, symbol_codes, on_cycle=_on_cycle)
+
+    lot_multiplier = lot_multiplier_holder.get("value", 0.0)
+
+    if is_system_halted(conn):
+        send_telegram_report("[INFO] システム停止中のため本日の新規エントリーをスキップ")
+        return
+
+    decisions = decide_entries(conn, watchlist, lot_multiplier, vwap_results)
     for decision in decisions:
         submit_entry_order(
             conn,
