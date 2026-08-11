@@ -34,8 +34,26 @@ class TestGetTickSize(unittest.TestCase):
     def test_boundary_just_above_30000(self) -> None:
         self.assertEqual(get_tick_size(Decimal("30000.1")), Decimal("10"))
 
-    def test_boundary_at_100000(self) -> None:
+    def test_boundary_at_100000_and_below(self) -> None:
         self.assertEqual(get_tick_size(Decimal("100000")), Decimal("10"))
+
+    def test_boundary_just_above_100000(self) -> None:
+        self.assertEqual(get_tick_size(Decimal("100000.1")), Decimal("100"))
+
+    def test_boundary_at_300000_and_below(self) -> None:
+        self.assertEqual(get_tick_size(Decimal("300000")), Decimal("100"))
+
+    def test_boundary_just_above_300000(self) -> None:
+        self.assertEqual(get_tick_size(Decimal("300000.1")), Decimal("500"))
+
+    def test_boundary_at_500000_and_below(self) -> None:
+        self.assertEqual(get_tick_size(Decimal("500000")), Decimal("500"))
+
+    def test_boundary_just_above_500000(self) -> None:
+        self.assertEqual(get_tick_size(Decimal("500000.1")), Decimal("1000"))
+
+    def test_boundary_at_1000000(self) -> None:
+        self.assertEqual(get_tick_size(Decimal("1000000")), Decimal("1000"))
 
     def test_raises_for_non_positive_price(self) -> None:
         with self.assertRaises(ValueError):
@@ -43,7 +61,7 @@ class TestGetTickSize(unittest.TestCase):
 
     def test_raises_for_price_above_upper_bound(self) -> None:
         with self.assertRaises(ValueError):
-            get_tick_size(Decimal("100000.1"))
+            get_tick_size(Decimal("1000000.1"))
 
 
 class TestRoundPriceNearest(unittest.TestCase):

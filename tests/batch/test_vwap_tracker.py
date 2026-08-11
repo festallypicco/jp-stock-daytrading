@@ -22,6 +22,8 @@ class TestTrackVwap(unittest.TestCase):
         )
 
         self.assertEqual(set(results.keys()), {"7203", "9984"})
+        self.assertEqual(results["7203"].opening_price, 1000.0)
+        self.assertEqual(results["9984"].opening_price, 2000.0)
 
     @patch("src.batch.vwap_tracker.time.sleep")
     def test_vwap_is_volume_weighted_average_of_price(self, mock_sleep) -> None:
@@ -38,6 +40,8 @@ class TestTrackVwap(unittest.TestCase):
         expected_total_delta = _TICK_VOLUME_INCREMENT * 2
         self.assertEqual(result.total_volume_delta, expected_total_delta)
         self.assertAlmostEqual(result.vwap, 1000.0)
+        self.assertEqual(result.opening_price, 1000.0)
+        self.assertEqual(result.last_price, 1000.0)
 
     @patch("src.batch.vwap_tracker.time.sleep")
     def test_vwap_weights_multiple_prices_correctly(self, mock_sleep) -> None:
@@ -64,6 +68,8 @@ class TestTrackVwap(unittest.TestCase):
         expected_vwap = (1100.0 * 500 + 1100.0 * 500) / (500 + 500)
         self.assertAlmostEqual(result.vwap, expected_vwap)
         self.assertEqual(result.total_volume_delta, 1000)
+        self.assertEqual(result.opening_price, 1000.0)
+        self.assertEqual(result.last_price, 1100.0)
 
     @patch("src.batch.vwap_tracker.time.sleep")
     def test_vwap_is_none_when_no_volume_delta_observed(self, mock_sleep) -> None:
@@ -75,6 +81,9 @@ class TestTrackVwap(unittest.TestCase):
         result = results["7203"]
         self.assertIsNone(result.vwap)
         self.assertEqual(result.total_volume_delta, 0)
+        # num_cycles=1では初回サイクル=最終サイクルであり、双方に同じ価格が記録される
+        self.assertEqual(result.opening_price, 1000.0)
+        self.assertEqual(result.last_price, 1000.0)
 
     @patch("src.batch.vwap_tracker.time.sleep")
     def test_on_cycle_receives_cycle_index_and_is_last_cycle(self, mock_sleep) -> None:

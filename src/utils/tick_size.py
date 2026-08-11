@@ -11,6 +11,9 @@ _TICK_SIZE_TABLE: list[tuple[Decimal, Decimal]] = [
     (Decimal("10000"), Decimal("1")),
     (Decimal("30000"), Decimal("5")),
     (Decimal("100000"), Decimal("10")),
+    (Decimal("300000"), Decimal("100")),
+    (Decimal("500000"), Decimal("500")),
+    (Decimal("1000000"), Decimal("1000")),
 ]
 
 
@@ -26,7 +29,7 @@ def get_tick_size(price: Decimal) -> Decimal:
         if price <= upper_bound:
             return tick_size
 
-    raise ValueError(f"price exceeds supported tick size table (max 100,000): {price}")
+    raise ValueError(f"price exceeds supported tick size table (max 1,000,000): {price}")
 
 
 def round_price(price: float, mode: str, base_price: float | None = None) -> Decimal:

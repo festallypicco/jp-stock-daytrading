@@ -15,6 +15,8 @@ class VwapResult:
     symbol_code: str
     vwap: float | None  # 出来高差分が一度も観測されなかった場合はNone
     total_volume_delta: int
+    opening_price: float | None  # cycle_index=0時点の価格
+    last_price: float | None  # 最終サイクル時点の価格
 
 
 def track_vwap(
@@ -35,9 +37,12 @@ def track_vwap(
     numerators: dict[str, float] = {code: 0.0 for code in symbol_codes}
     denominators: dict[str, int] = {code: 0 for code in symbol_codes}
     previous_ticks: dict[str, TickData] = {}
+    opening_prices: dict[str, float | None] = {code: None for code in symbol_codes}
+    last_prices: dict[str, float | None] = {code: None for code in symbol_codes}
 
     for cycle_index in range(num_cycles):
         cycle_start = time.monotonic()
+        is_last_cycle = cycle_index == num_cycles - 1
 
         for symbol_code in symbol_codes:
             tick = broker.get_tick(symbol_code)
@@ -48,7 +53,10 @@ def track_vwap(
                 denominators[symbol_code] += volume_delta
             previous_ticks[symbol_code] = tick
 
-        is_last_cycle = cycle_index == num_cycles - 1
+            if cycle_index == 0:
+                opening_prices[symbol_code] = tick.price
+            if is_last_cycle:
+                last_prices[symbol_code] = tick.price
 
         if on_cycle is not None:
             on_cycle(cycle_index, is_last_cycle)
@@ -66,5 +74,7 @@ def track_vwap(
             symbol_code=symbol_code,
             vwap=vwap,
             total_volume_delta=denominator,
+            opening_price=opening_prices[symbol_code],
+            last_price=last_prices[symbol_code],
         )
     return results
