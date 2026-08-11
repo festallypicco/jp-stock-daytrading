@@ -84,6 +84,35 @@ class TestMockBrokerClient(unittest.TestCase):
 
         self.assertEqual(client.get_account_balance(), 500_000.0)
 
+    def test_cancel_order_succeeds_for_pending_order(self) -> None:
+        client = MockBrokerClient()
+        result = client.place_order(_sample_request())
+
+        cancelled = client.cancel_order(result.broker_order_id)
+
+        self.assertTrue(cancelled)
+        # get_order_status()は呼ぶたびにFILLEDへ強制遷移させてしまうため、
+        # 状態確認はcancel_order()の再呼び出し（PENDINGでなくなっているのでFalse）で行う
+        self.assertFalse(client.cancel_order(result.broker_order_id))
+
+    def test_cancel_order_fails_for_already_filled_order(self) -> None:
+        client = MockBrokerClient()
+        result = client.place_order(_sample_request())
+        client.get_order_status(result.broker_order_id)  # FILLEDへ遷移させる
+
+        cancelled = client.cancel_order(result.broker_order_id)
+
+        self.assertFalse(cancelled)
+        status = client.get_order_status(result.broker_order_id)
+        self.assertEqual(status.status, "FILLED")
+
+    def test_cancel_order_fails_for_unknown_order_id(self) -> None:
+        client = MockBrokerClient()
+
+        cancelled = client.cancel_order("UNKNOWN-ORDER-ID")
+
+        self.assertFalse(cancelled)
+
 
 if __name__ == "__main__":
     unittest.main()

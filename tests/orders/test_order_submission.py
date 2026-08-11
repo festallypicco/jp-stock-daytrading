@@ -49,6 +49,9 @@ class _ExplodingBroker(BrokerClient):
     def get_account_balance(self) -> float:
         raise AssertionError("get_account_balance should not be called when halted")
 
+    def cancel_order(self, broker_order_id: str) -> bool:
+        raise AssertionError("cancel_order should not be called when halted")
+
 
 class TestSubmitEntryOrder(unittest.TestCase):
     def setUp(self) -> None:

@@ -41,6 +41,9 @@ class _AlwaysFailingBroker(BrokerClient):
     def get_account_balance(self) -> float:
         raise NotImplementedError
 
+    def cancel_order(self, broker_order_id: str) -> bool:
+        raise NotImplementedError
+
 
 class TestClassifyTopixChange(unittest.TestCase):
     def test_kill_at_boundary(self) -> None:

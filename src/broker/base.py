@@ -69,3 +69,10 @@ class BrokerClient(ABC):
 
         実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
         """
+
+    @abstractmethod
+    def cancel_order(self, broker_order_id: str) -> bool:
+        """指定注文をキャンセルする。成功時True、失敗時（既に約定済み等）False。
+
+        実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
+        """

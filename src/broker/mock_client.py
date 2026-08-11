@@ -120,3 +120,11 @@ class MockBrokerClient(BrokerClient):
 
     def get_account_balance(self) -> float:
         return self._initial_balance
+
+    def cancel_order(self, broker_order_id: str) -> bool:
+        state = self._order_states.get(broker_order_id)
+        if state is None or state.status != "PENDING":
+            return False
+
+        state.status = "CANCELLED"
+        return True
