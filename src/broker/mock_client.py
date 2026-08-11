@@ -27,6 +27,9 @@ class _OrderState:
     status: str
     price: float | None
     qty: int
+    order_type: str
+    side: str
+    symbol_code: str
 
 
 class MockBrokerClient(BrokerClient):
@@ -53,7 +56,9 @@ class MockBrokerClient(BrokerClient):
             )
 
         if request.price is not None:
-            self._last_price_by_symbol[request.symbol_code] = request.price
+            # 指値注文の指定価格は「約定を希望する価格」であり、市場の現在値とは
+            # 別物のため _last_price_by_symbol は更新しない（現在値と乖離した
+            # 指値がPENDINGのまま残ることが、以降の現実的な約定判定の前提となる）。
             fill_price = request.price
         else:
             # 成行注文（price=None）：直近に記録された同一銘柄の価格を約定価格とみなす。
@@ -63,7 +68,12 @@ class MockBrokerClient(BrokerClient):
 
         broker_order_id = f"MOCK-{uuid4().hex[:8]}"
         self._order_states[broker_order_id] = _OrderState(
-            status="PENDING", price=fill_price, qty=request.qty
+            status="PENDING",
+            price=fill_price,
+            qty=request.qty,
+            order_type=request.order_type,
+            side=request.side,
+            symbol_code=request.symbol_code,
         )
         return OrderResult(
             broker_order_id=broker_order_id,
@@ -81,13 +91,44 @@ class MockBrokerClient(BrokerClient):
                 filled_qty=None,
             )
 
-        state.status = "FILLED"
+        # FILLED/CANCELLEDは一度確定したら以降変化しない
+        if state.status in ("FILLED", "CANCELLED"):
+            return OrderStatusResult(
+                broker_order_id=broker_order_id,
+                status=state.status,
+                filled_price=state.price if state.status == "FILLED" else None,
+                filled_qty=state.qty if state.status == "FILLED" else None,
+            )
+
+        if self._is_limit_order_fillable(state):
+            state.status = "FILLED"
+            return OrderStatusResult(
+                broker_order_id=broker_order_id,
+                status="FILLED",
+                filled_price=state.price,
+                filled_qty=state.qty,
+            )
+
         return OrderStatusResult(
             broker_order_id=broker_order_id,
-            status="FILLED",
-            filled_price=state.price,
-            filled_qty=state.qty,
+            status="PENDING",
+            filled_price=None,
+            filled_qty=None,
         )
+
+    def _is_limit_order_fillable(self, state: _OrderState) -> bool:
+        if state.order_type == "MARKET":
+            return True
+
+        if state.price is None:
+            return False
+
+        current_price = self.get_quote(state.symbol_code)
+        if state.side == "SELL":
+            return current_price >= state.price
+        if state.side == "BUY":
+            return current_price <= state.price
+        return False
 
     def get_positions(self) -> list[BrokerPosition]:
         return []

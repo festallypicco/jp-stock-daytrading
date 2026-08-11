@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS positions (
     entry_price                REAL NOT NULL,
     entry_oir_rank_bucket        TEXT,                -- エントリー時点のOIRランクバケツ
     entry_gap_rate_bucket         TEXT,                -- エントリー時点の寄り付きギャップ率バケツ
+    sl_breakeven_activated          INTEGER NOT NULL DEFAULT 0,  -- SLをブレークイーブンにラチェット済みか
     status                          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
     opened_at                        TEXT NOT NULL,
     closed_at                         TEXT

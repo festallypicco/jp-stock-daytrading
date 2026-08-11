@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS positions (
     entry_price                REAL NOT NULL,
     entry_oir_rank_bucket        TEXT,                -- エントリー時点のOIRランクバケツ
     entry_gap_rate_bucket         TEXT,                -- エントリー時点の寄り付きギャップ率バケツ
+    sl_breakeven_activated          INTEGER NOT NULL DEFAULT 0,  -- SLをブレークイーブンにラチェット済みか
     status                          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
     opened_at                        TEXT NOT NULL,
     closed_at                         TEXT
@@ -129,6 +130,7 @@ CREATE TABLE IF NOT EXISTS positions (
 ```
 
 - `entry_oir_rank_bucket`/`entry_gap_rate_bucket`：エントリー約定時に記録し、決済確定時に`trades`へコピーする
+- `sl_breakeven_activated`：日中監視ループがSL価格をブレークイーブン（建値）にラチェット済みかどうかのフラグ。デフォルト`0`（未実施）、実施後`1`に更新し、以降の重複ラチェットを防止する
 
 ## 8. trades — 決済済みトレード実績
 

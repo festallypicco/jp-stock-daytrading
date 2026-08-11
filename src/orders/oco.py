@@ -1,7 +1,7 @@
-"""TP/SLのOCOペアを「発注するだけ」行う軽量版発注処理。
+"""TP注文を「発注するだけ」行う軽量版発注処理。
 
-約定確認（wait_for_fill）・apply_fillはここでは行わない。約定確認は
-日中監視ループ側の責務とする。
+約定確認（wait_for_fill）・apply_fillはここでは行わない。約定確認・SL監視・
+ブレークイーブンラチェットは日中監視ループ側の責務とする。
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from src.utils.tick_size import round_price
 _JST = ZoneInfo("Asia/Tokyo")
 
 _TP_ATR_MULTIPLIER = 1.5
-_SL_ATR_MULTIPLIER = 1.0
 
 
 def _now_jst() -> str:
@@ -95,12 +94,12 @@ def _place_and_record(conn: sqlite3.Connection, broker: BrokerClient, request: O
     return order_id
 
 
-def place_oco_pair(
+def place_tp_order(
     conn: sqlite3.Connection, broker: BrokerClient, position_row: dict
-) -> tuple[str | None, str | None]:
-    """position_rowに対しTP・SL注文を発注するだけ行う（約定確認・apply_fillは行わない）。
+) -> str | None:
+    """position_rowに対しTP注文を発注するだけ行う（約定確認・apply_fillは行わない）。
 
-    ATR未取得時は (None, None) を返し、この銘柄のOCO発注をスキップする
+    ATR未取得時は None を返し、この銘柄のTP発注をスキップする
     （呼び出し元が次サイクルで再試行できるよう例外は出さない）。
     """
     symbol_code = position_row["symbol_code"]
@@ -116,15 +115,12 @@ def place_oco_pair(
         (symbol_code, _today_jst()),
     ).fetchone()
     if atr_row is None or atr_row[0] is None:
-        return None, None
+        return None
 
     atr14 = atr_row[0]
 
     tp_price = float(
         round_price(entry_price + atr14 * _TP_ATR_MULTIPLIER, "INWARD", entry_price)
-    )
-    sl_price = float(
-        round_price(entry_price - atr14 * _SL_ATR_MULTIPLIER, "INWARD", entry_price)
     )
 
     tp_request = OrderRequest(
@@ -136,17 +132,5 @@ def place_oco_pair(
         qty=qty,
         price=tp_price,
     )
-    sl_request = OrderRequest(
-        symbol_code=symbol_code,
-        side="SELL",
-        position_type="SPOT",
-        order_role="SL",
-        order_type="LIMIT",
-        qty=qty,
-        price=sl_price,
-    )
 
-    tp_order_id = _place_and_record(conn, broker, tp_request)
-    sl_order_id = _place_and_record(conn, broker, sl_request)
-
-    return tp_order_id, sl_order_id
+    return _place_and_record(conn, broker, tp_request)

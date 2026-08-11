@@ -113,6 +113,74 @@ class TestMockBrokerClient(unittest.TestCase):
 
         self.assertFalse(cancelled)
 
+    def test_limit_sell_order_stays_pending_while_price_below_limit(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1000.0})
+        result = client.place_order(
+            OrderRequest(
+                symbol_code="7203",
+                side="SELL",
+                position_type="SPOT",
+                order_role="TP",
+                order_type="LIMIT",
+                qty=100,
+                price=1050.0,
+            )
+        )
+
+        # 現在値(1000.0)が指値(1050.0)未満の間は、何度照会してもPENDINGのまま
+        for _ in range(3):
+            status = client.get_order_status(result.broker_order_id)
+            self.assertEqual(status.status, "PENDING")
+
+    def test_limit_sell_order_fills_once_price_reaches_limit(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1000.0})
+        result = client.place_order(
+            OrderRequest(
+                symbol_code="7203",
+                side="SELL",
+                position_type="SPOT",
+                order_role="TP",
+                order_type="LIMIT",
+                qty=100,
+                price=1050.0,
+            )
+        )
+
+        self.assertEqual(client.get_order_status(result.broker_order_id).status, "PENDING")
+
+        client._last_price_by_symbol["7203"] = 1050.0
+        status = client.get_order_status(result.broker_order_id)
+
+        self.assertEqual(status.status, "FILLED")
+        self.assertEqual(status.filled_price, 1050.0)
+        self.assertEqual(status.filled_qty, 100)
+
+    def test_once_filled_order_stays_filled_even_if_price_moves_away(self) -> None:
+        client = MockBrokerClient(initial_prices={"7203": 1000.0})
+        result = client.place_order(
+            OrderRequest(
+                symbol_code="7203",
+                side="SELL",
+                position_type="SPOT",
+                order_role="TP",
+                order_type="LIMIT",
+                qty=100,
+                price=1050.0,
+            )
+        )
+
+        client._last_price_by_symbol["7203"] = 1050.0
+        first_status = client.get_order_status(result.broker_order_id)
+        self.assertEqual(first_status.status, "FILLED")
+
+        # 約定後に現在値が指値を下回っても、状態はFILLEDのまま変化しない
+        client._last_price_by_symbol["7203"] = 900.0
+        second_status = client.get_order_status(result.broker_order_id)
+
+        self.assertEqual(second_status.status, "FILLED")
+        self.assertEqual(second_status.filled_price, 1050.0)
+        self.assertEqual(second_status.filled_qty, 100)
+
 
 if __name__ == "__main__":
     unittest.main()
