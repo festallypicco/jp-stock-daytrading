@@ -22,13 +22,16 @@ def track_vwap(
     symbol_codes: list[str],
     poll_interval_sec: float = 15.0,
     num_cycles: int = 20,
-    on_cycle: Callable[[int], None] | None = None,
+    on_cycle: Callable[[int, bool], None] | None = None,
 ) -> dict[str, VwapResult]:
     """symbol_codes をpoll_interval_sec間隔・num_cycles回ポーリングしVWAPを計算する。
 
     初回サイクルはベースライン記録のみで、VWAPの累積計算は2回目以降の
     サイクルから前回tickとの出来高差分を用いて行う。
     """
+    if not symbol_codes:
+        return {}
+
     numerators: dict[str, float] = {code: 0.0 for code in symbol_codes}
     denominators: dict[str, int] = {code: 0 for code in symbol_codes}
     previous_ticks: dict[str, TickData] = {}
@@ -45,10 +48,12 @@ def track_vwap(
                 denominators[symbol_code] += volume_delta
             previous_ticks[symbol_code] = tick
 
-        if on_cycle is not None:
-            on_cycle(cycle_index)
+        is_last_cycle = cycle_index == num_cycles - 1
 
-        if cycle_index != num_cycles - 1:
+        if on_cycle is not None:
+            on_cycle(cycle_index, is_last_cycle)
+
+        if not is_last_cycle:
             elapsed_sec = time.monotonic() - cycle_start
             wait_sec = max(0.0, poll_interval_sec - elapsed_sec)
             time.sleep(wait_sec)

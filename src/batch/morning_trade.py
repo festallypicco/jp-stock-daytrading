@@ -27,9 +27,6 @@ _TOPIX_SYMBOL_CODE = "1306"
 _MARKET_OPEN_WAIT_TIME = dt_time(9, 0, 0)
 _WATCHLIST_FRESHNESS_CUTOFF = dt_time(15, 0)
 _WATCHLIST_LIMIT = 10
-# track_vwap()のデフォルトnum_cycles=20に対応する最終サイクルのインデックス（9:04:45相当）。
-# track_vwap()呼び出し時にnum_cyclesを変更しない前提で成り立つ値のため、変更時は要見直し。
-_VWAP_FINAL_CYCLE_INDEX = 19
 
 
 def _now_jst() -> datetime:
@@ -167,8 +164,8 @@ def run_morning_batch(conn: sqlite3.Connection, broker: BrokerClient | None = No
 
     lot_multiplier_holder: dict[str, float] = {}
 
-    def _on_cycle(cycle_index: int) -> None:
-        if cycle_index == _VWAP_FINAL_CYCLE_INDEX:
+    def _on_cycle(cycle_index: int, is_last_cycle: bool) -> None:
+        if is_last_cycle:
             lot_multiplier_holder["value"] = _determine_lot_multiplier(conn, broker, today)
 
     vwap_results = track_vwap(broker, symbol_codes, on_cycle=_on_cycle)

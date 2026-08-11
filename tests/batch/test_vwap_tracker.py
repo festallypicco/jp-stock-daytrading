@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from src.batch.vwap_tracker import track_vwap
 from src.broker.mock_client import MockBrokerClient
@@ -77,19 +77,38 @@ class TestTrackVwap(unittest.TestCase):
         self.assertEqual(result.total_volume_delta, 0)
 
     @patch("src.batch.vwap_tracker.time.sleep")
-    def test_on_cycle_called_once_per_cycle(self, mock_sleep) -> None:
+    def test_on_cycle_receives_cycle_index_and_is_last_cycle(self, mock_sleep) -> None:
         broker = MockBrokerClient(initial_prices={"7203": 1000.0})
-        called_cycle_indexes = []
+        on_cycle_calls = []
 
         track_vwap(
             broker,
             ["7203"],
             poll_interval_sec=15.0,
             num_cycles=3,
-            on_cycle=called_cycle_indexes.append,
+            on_cycle=lambda cycle_index, is_last_cycle: on_cycle_calls.append(
+                (cycle_index, is_last_cycle)
+            ),
         )
 
-        self.assertEqual(called_cycle_indexes, [0, 1, 2])
+        self.assertEqual(
+            on_cycle_calls, [(0, False), (1, False), (2, True)]
+        )
+
+    @patch("src.batch.vwap_tracker.time.sleep")
+    def test_empty_symbol_codes_returns_empty_dict_without_calling_get_tick(
+        self, mock_sleep
+    ) -> None:
+        broker = MockBrokerClient(initial_prices={"7203": 1000.0})
+        broker.get_tick = Mock(
+            side_effect=AssertionError("get_tick should not be called")
+        )
+
+        results = track_vwap(broker, [], poll_interval_sec=15.0, num_cycles=3)
+
+        self.assertEqual(results, {})
+        broker.get_tick.assert_not_called()
+        mock_sleep.assert_not_called()
 
     @patch("src.batch.vwap_tracker.time.sleep")
     def test_sleeps_between_cycles_but_not_after_last_cycle(self, mock_sleep) -> None:
