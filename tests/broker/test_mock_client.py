@@ -74,6 +74,16 @@ class TestMockBrokerClient(unittest.TestCase):
         self.assertEqual(tick2.price, client.get_quote("7203"))
         self.assertEqual(tick3.price, client.get_quote("7203"))
 
+    def test_get_account_balance_returns_default(self) -> None:
+        client = MockBrokerClient()
+
+        self.assertEqual(client.get_account_balance(), 1_000_000.0)
+
+    def test_get_account_balance_returns_initial_balance(self) -> None:
+        client = MockBrokerClient(initial_balance=500_000.0)
+
+        self.assertEqual(client.get_account_balance(), 500_000.0)
+
 
 if __name__ == "__main__":
     unittest.main()

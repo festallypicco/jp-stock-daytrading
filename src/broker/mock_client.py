@@ -34,6 +34,7 @@ class MockBrokerClient(BrokerClient):
         self,
         force_reject: bool = False,
         initial_prices: dict[str, float] | None = None,
+        initial_balance: float = 1_000_000.0,
     ) -> None:
         self._force_reject = force_reject
         self._order_states: dict[str, _OrderState] = {}
@@ -41,6 +42,7 @@ class MockBrokerClient(BrokerClient):
             dict(initial_prices) if initial_prices else {}
         )
         self._cumulative_volume_by_symbol: dict[str, int] = {}
+        self._initial_balance = initial_balance
 
     def place_order(self, request: OrderRequest) -> OrderResult:
         if self._force_reject:
@@ -115,3 +117,6 @@ class MockBrokerClient(BrokerClient):
             price=self.get_quote(symbol_code),
             cumulative_volume=updated_volume,
         )
+
+    def get_account_balance(self) -> float:
+        return self._initial_balance

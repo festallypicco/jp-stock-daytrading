@@ -38,6 +38,9 @@ class _AlwaysFailingBroker(BrokerClient):
     def get_tick(self, symbol_code: str) -> TickData:
         raise NotImplementedError
 
+    def get_account_balance(self) -> float:
+        raise NotImplementedError
+
 
 class TestClassifyTopixChange(unittest.TestCase):
     def test_kill_at_boundary(self) -> None:

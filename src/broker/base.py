@@ -62,3 +62,10 @@ class BrokerClient(ABC):
         （get_quote()は価格のみが必要な場面向けとして残す）。
         実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
         """
+
+    @abstractmethod
+    def get_account_balance(self) -> float:
+        """証券口座の利用可能残高（現金）を取得する。
+
+        実クライアント実装時にこのインターフェースを維持したまま中身を実装すること。
+        """

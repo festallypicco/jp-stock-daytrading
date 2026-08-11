@@ -46,6 +46,9 @@ class _ExplodingBroker(BrokerClient):
     def get_tick(self, symbol_code: str) -> TickData:
         raise AssertionError("get_tick should not be called when halted")
 
+    def get_account_balance(self) -> float:
+        raise AssertionError("get_account_balance should not be called when halted")
+
 
 class TestSubmitEntryOrder(unittest.TestCase):
     def setUp(self) -> None:
