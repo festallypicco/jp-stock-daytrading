@@ -148,6 +148,29 @@ CREATE TABLE IF NOT EXISTS balance_adjustments (
     recorded_at     TEXT NOT NULL              -- JST ISO8601文字列
 );
 
+CREATE TABLE IF NOT EXISTS tuning_parameters (
+    parameter_name   TEXT PRIMARY KEY,   -- 'buy_surge_threshold' / 'sell_surge_threshold'
+    current_value    REAL NOT NULL,
+    effective_since  TEXT NOT NULL,      -- この値になった日時（JST ISO8601）。実トレード件数カウントの起点
+    updated_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tuning_history (
+    tuning_id           TEXT PRIMARY KEY,  -- UUID v7
+    run_date             TEXT NOT NULL,
+    parameter_name        TEXT NOT NULL,
+    current_value          REAL NOT NULL,
+    proposed_value          REAL,
+    trade_count_used         INTEGER NOT NULL,
+    data_sufficient            INTEGER NOT NULL,
+    outlier_detected             INTEGER NOT NULL,
+    step_limited_value             REAL,
+    applied                          INTEGER NOT NULL,
+    mode                              TEXT NOT NULL CHECK (mode IN ('SHADOW', 'LIVE')),
+    reason                             TEXT,
+    created_at                         TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS walk_forward_results (
     window_id       INTEGER PRIMARY KEY AUTOINCREMENT,
     train_start     TEXT NOT NULL,
