@@ -18,11 +18,9 @@ from src.ai_tuning.prompts import (
 )
 from src.ai_tuning.summary import TuningReviewSummary, build_review_summary
 
-# NOTE: BTC側（別プロジェクト）のai_review実装で使用している実際のモデル名を
-# 本タスクでは確認できなかったため、暫定値のまま実装している。BTC側の設定値確認要。
-_PROPOSER_MODEL = "llama-3.3-70b-versatile"
-_SKEPTIC_MODEL = "gemini-1.5-pro"
-_MODERATOR_MODEL = "gemini-1.5-pro"
+_PROPOSER_MODEL = "openai/gpt-oss-120b"  # Groq
+_SKEPTIC_MODEL = "gemini-3.5-flash"  # Gemini
+_MODERATOR_MODEL = "gemini-3.5-flash"  # Gemini
 
 _MODERATOR_MAX_RETRIES = 3
 
