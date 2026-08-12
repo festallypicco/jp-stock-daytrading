@@ -127,6 +127,7 @@ def submit_entry_order(
             filled_qty=filled_qty,
             oir_rank_bucket=oir_rank_bucket,
             gap_rate_bucket=gap_rate_bucket,
+            fee=status_result.fee,
         )
         conn.commit()
         return order_id

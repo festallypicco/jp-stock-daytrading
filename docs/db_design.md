@@ -122,14 +122,17 @@ CREATE TABLE IF NOT EXISTS positions (
     entry_price                REAL NOT NULL,
     entry_oir_rank_bucket        TEXT,                -- エントリー時点のOIRランクバケツ
     entry_gap_rate_bucket         TEXT,                -- エントリー時点の寄り付きギャップ率バケツ
-    sl_breakeven_activated          INTEGER NOT NULL DEFAULT 0,  -- SLをブレークイーブンにラチェット済みか
-    status                          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
-    opened_at                        TEXT NOT NULL,
-    closed_at                         TEXT
+    entry_fee                      INTEGER,             -- エントリー約定にかかった手数料（円）。決済確定時にtradesへ引き継ぐ
+    entry_fee_source                TEXT CHECK (entry_fee_source IN ('API_AUTO', 'CALCULATED')),
+    sl_breakeven_activated            INTEGER NOT NULL DEFAULT 0,  -- SLをブレークイーブンにラチェット済みか
+    status                            TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
+    opened_at                          TEXT NOT NULL,
+    closed_at                           TEXT
 );
 ```
 
 - `entry_oir_rank_bucket`/`entry_gap_rate_bucket`：エントリー約定時に記録し、決済確定時に`trades`へコピーする
+- `entry_fee`/`entry_fee_source`：エントリー約定確定時（`apply_fill`のENTRYルート）に記録する手数料。約定確定時点では「どのトレード（決済）に属するか」がまだ決まっていないため、いったんここに保持し、決済確定時に`trades.entry_fee`/`trades.entry_fee_source`へそのままコピーする
 - `sl_breakeven_activated`：日中監視ループがSL価格をブレークイーブン（建値）にラチェット済みかどうかのフラグ。デフォルト`0`（未実施）、実施後`1`に更新し、以降の重複ラチェットを防止する
 
 ## 8. trades — 決済済みトレード実績
@@ -154,8 +157,10 @@ CREATE TABLE IF NOT EXISTS trades (
     mfe                                        REAL,
     mae                                         REAL,
     settlement_9_30_price                        REAL,
-    fee                                          INTEGER,
-    fee_source                                   TEXT CHECK (fee_source IN ('API_AUTO', 'CALCULATED')),
+    entry_fee                                    INTEGER,
+    entry_fee_source                             TEXT CHECK (entry_fee_source IN ('API_AUTO', 'CALCULATED')),
+    exit_fee                                     INTEGER,
+    exit_fee_source                              TEXT CHECK (exit_fee_source IN ('API_AUTO', 'CALCULATED')),
     created_at                                    TEXT NOT NULL
 );
 ```
@@ -163,8 +168,10 @@ CREATE TABLE IF NOT EXISTS trades (
 - `position_id`：どのポジションの決済かを追跡（手動対応時の突き合わせ用）
 - `exit_order_id`：決済を確定させた`orders`レコードへの参照
 - `apply_fill`時に`orders`/`positions`更新と同一トランザクションで即時INSERTし、`mfe`/`mae`/`settlement_9_30_price`は`NULL`のまま保存。9:30以降の冪等なバッチ（`WHERE mfe IS NULL`等）でUPDATEする
-- `fee`：当該決済（exit）約定にかかった手数料（円）。証券会社APIの約定照会レスポンスに手数料フィールドがあればその値を採用（`fee_source='API_AUTO'`）、無ければ`config/fee_schedule.py`の手数料体系から約定代金（`filled_price * filled_qty`）を基に自前計算する（`fee_source='CALCULATED'`）。エントリー側の手数料は現状どこにも記録しておらず、`fee`は決済側のみの手数料である点に注意（将来`orders`または`positions`にエントリー手数料列を追加する余地あり）
-- `fee_source`：`API_AUTO`／`CALCULATED`のいずれか。`MockBrokerClient`は現時点で手数料情報を返さないため、モック環境では常に`CALCULATED`になる
+- `entry_fee`/`entry_fee_source`：決済確定時に、クローズ対象`positions`の`entry_fee`/`entry_fee_source`をそのままコピーする（エントリー約定にかかった手数料）
+- `exit_fee`/`exit_fee_source`：当該決済（exit）約定にかかった手数料（円）。証券会社APIの約定照会レスポンスに手数料フィールドがあればその値を採用（`exit_fee_source='API_AUTO'`）、無ければ`config/fee_schedule.py`の手数料体系から約定代金（`filled_price * filled_qty`）を基に自前計算する（`exit_fee_source='CALCULATED'`）
+- `*_fee_source`：`API_AUTO`／`CALCULATED`のいずれか。`MockBrokerClient`は現時点で手数料情報を返さないため、モック環境では常に`CALCULATED`になる
+- 旧`fee`/`fee_source`列（決済側のみを表す単一列）は、本設計で`exit_fee`/`exit_fee_source`へ改名し、新たに`entry_fee`/`entry_fee_source`を追加した。旧スキーマで作成済みのDBに対しては、`db/initializer.py`の`init_db()`が`ALTER TABLE ... RENAME COLUMN`／`ADD COLUMN`により非破壊的に追従する（`_migrate_fee_columns()`、対象カラムが無い場合のみ実行する冪等な処理）
 
 ## 9. system_halts — システム監視
 

@@ -1,6 +1,7 @@
 """calculate_expected_balance() のユニットテスト。
 
-DB想定残高 = Σ balance_adjustments.amount + Σ trades.pnl - Σ trades.fee
+DB想定残高 = Σ balance_adjustments.amount + Σ trades.pnl
+             - Σ trades.entry_fee - Σ trades.exit_fee
 の積み上げ計算そのもの（特に手数料計算バグの検出）を重点的に検証する。
 """
 
@@ -53,7 +54,14 @@ class TestCalculateExpectedBalance(unittest.TestCase):
         )
         self.conn.commit()
 
-    def _insert_trade(self, pnl: float, fee: float | None, fee_source: str | None) -> None:
+    def _insert_trade(
+        self,
+        pnl: float,
+        entry_fee: float | None = None,
+        entry_fee_source: str | None = None,
+        exit_fee: float | None = None,
+        exit_fee_source: str | None = None,
+    ) -> None:
         self.conn.execute(
             """
             INSERT INTO trades (
@@ -61,11 +69,20 @@ class TestCalculateExpectedBalance(unittest.TestCase):
                 entry_price, exit_price, qty, pnl,
                 oir_rank_bucket, gap_rate_bucket,
                 jibai_value, jibai_label, kill_flag, mfe, mae, settlement_9_30_price,
-                fee, fee_source, created_at
+                entry_fee, entry_fee_source, exit_fee, exit_fee_source, created_at
             ) VALUES (?, NULL, NULL, ?, '2026-08-10', 'SELL', 1000.0, 1000.0, 100, ?,
-                      'A', 'B', NULL, NULL, 0, NULL, NULL, NULL, ?, ?, ?)
+                      'A', 'B', NULL, NULL, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?)
             """,
-            (uuid7(), _SYMBOL_CODE, pnl, fee, fee_source, _NOW),
+            (
+                uuid7(),
+                _SYMBOL_CODE,
+                pnl,
+                entry_fee,
+                entry_fee_source,
+                exit_fee,
+                exit_fee_source,
+                _NOW,
+            ),
         )
         self.conn.commit()
 
@@ -78,36 +95,74 @@ class TestCalculateExpectedBalance(unittest.TestCase):
 
     def test_initial_balance_plus_single_trade(self) -> None:
         self._insert_adjustment("INITIAL_BALANCE", 1_000_000)
-        self._insert_trade(pnl=5_000, fee=88, fee_source="CALCULATED")
+        self._insert_trade(
+            pnl=5_000,
+            entry_fee=50,
+            entry_fee_source="CALCULATED",
+            exit_fee=88,
+            exit_fee_source="CALCULATED",
+        )
 
-        # 1,000,000 + 5,000 - 88 = 1,004,912
-        self.assertEqual(calculate_expected_balance(self.conn), 1_004_912)
+        # 1,000,000 + 5,000 - 50 - 88 = 1,004,862
+        self.assertEqual(calculate_expected_balance(self.conn), 1_004_862)
+
+    def test_entry_and_exit_fee_both_subtracted(self) -> None:
+        # entry_fee/exit_feeの両方が独立に差し引かれることをピンポイントで検証する
+        self._insert_adjustment("INITIAL_BALANCE", 1_000_000)
+        self._insert_trade(
+            pnl=0,
+            entry_fee=100,
+            entry_fee_source="CALCULATED",
+            exit_fee=200,
+            exit_fee_source="CALCULATED",
+        )
+
+        # 1,000,000 + 0 - 100 - 200 = 999,700
+        self.assertEqual(calculate_expected_balance(self.conn), 999_700)
 
     def test_multiple_adjustments_and_trades(self) -> None:
         self._insert_adjustment("INITIAL_BALANCE", 1_000_000)
         self._insert_adjustment("DEPOSIT", 50_000)
         self._insert_adjustment("WITHDRAWAL", -20_000)
-        self._insert_trade(pnl=-3_000, fee=55, fee_source="CALCULATED")
-        self._insert_trade(pnl=10_000, fee=198, fee_source="CALCULATED")
+        self._insert_trade(
+            pnl=-3_000,
+            entry_fee=55,
+            entry_fee_source="CALCULATED",
+            exit_fee=55,
+            exit_fee_source="CALCULATED",
+        )
+        self._insert_trade(
+            pnl=10_000,
+            entry_fee=88,
+            entry_fee_source="CALCULATED",
+            exit_fee=198,
+            exit_fee_source="CALCULATED",
+        )
 
-        # (1,000,000 + 50,000 - 20,000) + (-3,000 + 10,000) - (55 + 198) = 1,036,747
-        self.assertEqual(calculate_expected_balance(self.conn), 1_036_747)
+        # (1,000,000 + 50,000 - 20,000) + (-3,000 + 10,000) - (55+88) - (55+198) = 1,036,604
+        self.assertEqual(calculate_expected_balance(self.conn), 1_036_604)
 
     def test_trade_with_null_fee_is_treated_as_zero(self) -> None:
         # 手数料未記録（NULL）の過去データが混在していても集計が壊れないことを確認する
         self._insert_adjustment("INITIAL_BALANCE", 1_000_000)
-        self._insert_trade(pnl=1_000, fee=None, fee_source=None)
-        self._insert_trade(pnl=2_000, fee=88, fee_source="CALCULATED")
+        self._insert_trade(pnl=1_000)
+        self._insert_trade(pnl=2_000, exit_fee=88, exit_fee_source="CALCULATED")
 
-        # 1,000,000 + (1,000 + 2,000) - (0 + 88) = 1,002,912
+        # 1,000,000 + (1,000 + 2,000) - (0 + 0) - (0 + 88) = 1,002,912
         self.assertEqual(calculate_expected_balance(self.conn), 1_002_912)
 
     def test_api_auto_fee_included_same_as_calculated(self) -> None:
         self._insert_adjustment("INITIAL_BALANCE", 1_000_000)
-        self._insert_trade(pnl=5_000, fee=100, fee_source="API_AUTO")
+        self._insert_trade(
+            pnl=5_000,
+            entry_fee=40,
+            entry_fee_source="API_AUTO",
+            exit_fee=100,
+            exit_fee_source="API_AUTO",
+        )
 
-        # fee_sourceの種類によらず、fee列の値はそのまま差し引かれる
-        self.assertEqual(calculate_expected_balance(self.conn), 1_004_900)
+        # fee_sourceの種類によらず、entry_fee/exit_fee列の値はそのまま差し引かれる
+        self.assertEqual(calculate_expected_balance(self.conn), 1_004_860)
 
 
 if __name__ == "__main__":

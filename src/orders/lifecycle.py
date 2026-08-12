@@ -21,6 +21,13 @@ def _now_jst() -> str:
     return datetime.now(_JST).isoformat()
 
 
+def _resolve_fee(fee: float | None, trade_value: float) -> tuple[float, str]:
+    """手数料を確定する。値があればAPI_AUTO、無ければ自前計算しCALCULATEDとする。"""
+    if fee is not None:
+        return fee, "API_AUTO"
+    return calculate_fee(trade_value), "CALCULATED"
+
+
 def apply_fill(
     conn: sqlite3.Connection,
     order_id: str,
@@ -61,6 +68,7 @@ def apply_fill(
             filled_qty=filled_qty,
             oir_rank_bucket=oir_rank_bucket,
             gap_rate_bucket=gap_rate_bucket,
+            fee=fee,
             now=now,
         )
         return
@@ -90,16 +98,20 @@ def _apply_entry_fill(
     filled_qty: int,
     oir_rank_bucket: str | None,
     gap_rate_bucket: str | None,
+    fee: float | None,
     now: str,
 ) -> None:
+    entry_fee_amount, entry_fee_source = _resolve_fee(fee, filled_price * filled_qty)
+
     position_id = uuid7()
     conn.execute(
         """
         INSERT INTO positions (
             position_id, symbol_code, qty, entry_price,
             entry_oir_rank_bucket, entry_gap_rate_bucket,
+            entry_fee, entry_fee_source,
             status, opened_at, closed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, NULL)
         """,
         (
             position_id,
@@ -108,6 +120,8 @@ def _apply_entry_fill(
             filled_price,
             oir_rank_bucket,
             gap_rate_bucket,
+            entry_fee_amount,
+            entry_fee_source,
             now,
         ),
     )
@@ -127,7 +141,8 @@ def _apply_exit_fill(
 ) -> None:
     position_row = conn.execute(
         """
-        SELECT position_id, qty, entry_price, entry_oir_rank_bucket, entry_gap_rate_bucket
+        SELECT position_id, qty, entry_price, entry_oir_rank_bucket, entry_gap_rate_bucket,
+               entry_fee, entry_fee_source
         FROM positions
         WHERE symbol_code = ? AND status = 'OPEN'
         LIMIT 1
@@ -143,6 +158,8 @@ def _apply_exit_fill(
         entry_price,
         entry_oir_rank_bucket,
         entry_gap_rate_bucket,
+        entry_fee,
+        entry_fee_source,
     ) = position_row
 
     remaining_qty = position_qty - filled_qty
@@ -172,13 +189,7 @@ def _apply_exit_fill(
         )
 
     pnl = (filled_price - entry_price) * filled_qty
-
-    if fee is not None:
-        fee_amount = fee
-        fee_source = "API_AUTO"
-    else:
-        fee_amount = calculate_fee(filled_price * filled_qty)
-        fee_source = "CALCULATED"
+    exit_fee_amount, exit_fee_source = _resolve_fee(fee, filled_price * filled_qty)
 
     trade_id = uuid7()
     conn.execute(
@@ -188,9 +199,9 @@ def _apply_exit_fill(
             entry_price, exit_price, qty, pnl,
             oir_rank_bucket, gap_rate_bucket,
             jibai_value, jibai_label, kill_flag, mfe, mae, settlement_9_30_price,
-            fee, fee_source,
+            entry_fee, entry_fee_source, exit_fee, exit_fee_source,
             created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?)
         """,
         (
             trade_id,
@@ -205,8 +216,10 @@ def _apply_exit_fill(
             pnl,
             entry_oir_rank_bucket,
             entry_gap_rate_bucket,
-            fee_amount,
-            fee_source,
+            entry_fee,
+            entry_fee_source,
+            exit_fee_amount,
+            exit_fee_source,
             now,
         ),
     )

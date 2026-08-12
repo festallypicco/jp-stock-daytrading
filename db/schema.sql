@@ -78,10 +78,12 @@ CREATE TABLE IF NOT EXISTS positions (
     entry_price                REAL NOT NULL,
     entry_oir_rank_bucket        TEXT,                -- エントリー時点のOIRランクバケツ
     entry_gap_rate_bucket         TEXT,                -- エントリー時点の寄り付きギャップ率バケツ
-    sl_breakeven_activated          INTEGER NOT NULL DEFAULT 0,  -- SLをブレークイーブンにラチェット済みか
-    status                          TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
-    opened_at                        TEXT NOT NULL,
-    closed_at                         TEXT
+    entry_fee                      INTEGER,             -- エントリー約定にかかった手数料（円）。決済確定時にtradesへ引き継ぐ
+    entry_fee_source                TEXT CHECK (entry_fee_source IN ('API_AUTO', 'CALCULATED')),
+    sl_breakeven_activated            INTEGER NOT NULL DEFAULT 0,  -- SLをブレークイーブンにラチェット済みか
+    status                            TEXT NOT NULL CHECK (status IN ('OPEN', 'CLOSED', 'MANUAL_REQUIRED')),
+    opened_at                          TEXT NOT NULL,
+    closed_at                           TEXT
 );
 
 CREATE TABLE IF NOT EXISTS trades (
@@ -103,8 +105,10 @@ CREATE TABLE IF NOT EXISTS trades (
     mfe                                        REAL,
     mae                                         REAL,
     settlement_9_30_price                        REAL,
-    fee                                          INTEGER,             -- 決済（exit）約定にかかった手数料（円）
-    fee_source                                   TEXT CHECK (fee_source IN ('API_AUTO', 'CALCULATED')),
+    entry_fee                                    INTEGER,             -- positionsから引き継いだエントリー手数料（円）
+    entry_fee_source                             TEXT CHECK (entry_fee_source IN ('API_AUTO', 'CALCULATED')),
+    exit_fee                                     INTEGER,             -- 決済（exit）約定にかかった手数料（円）
+    exit_fee_source                              TEXT CHECK (exit_fee_source IN ('API_AUTO', 'CALCULATED')),
     created_at                                    TEXT NOT NULL
 );
 

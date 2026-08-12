@@ -57,6 +57,25 @@ class TestApplyFill(unittest.TestCase):
         )
         self.conn.commit()
 
+    def _insert_open_position(
+        self,
+        position_id: str,
+        entry_fee: float | None = None,
+        entry_fee_source: str | None = None,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO positions (
+                position_id, symbol_code, qty, entry_price,
+                entry_oir_rank_bucket, entry_gap_rate_bucket,
+                entry_fee, entry_fee_source,
+                status, opened_at, closed_at
+            ) VALUES (?, ?, 100, 1000.0, 'A', 'B', ?, ?, 'OPEN', ?, NULL)
+            """,
+            (position_id, _SYMBOL_CODE, entry_fee, entry_fee_source, _NOW),
+        )
+        self.conn.commit()
+
     def test_entry_creates_open_position(self) -> None:
         self._insert_order("order-entry-1", "BUY", "ENTRY", 100, 1000.0)
 
@@ -78,29 +97,41 @@ class TestApplyFill(unittest.TestCase):
         positions = self.conn.execute(
             """
             SELECT symbol_code, qty, entry_price, entry_oir_rank_bucket,
-                   entry_gap_rate_bucket, status, closed_at
+                   entry_gap_rate_bucket, entry_fee, entry_fee_source, status, closed_at
             FROM positions
             """
         ).fetchall()
         self.assertEqual(len(positions), 1)
+        # 約定代金 = 1005.0 * 100 = 100,500円 -> 手数料テーブルの2段階目(88円)
         self.assertEqual(
             positions[0],
-            (_SYMBOL_CODE, 100, 1005.0, "A", "B", "OPEN", None),
+            (_SYMBOL_CODE, 100, 1005.0, "A", "B", 88, "CALCULATED", "OPEN", None),
         )
+
+    def test_entry_fill_with_broker_reported_fee_uses_api_auto(self) -> None:
+        self._insert_order("order-entry-2", "BUY", "ENTRY", 100, 1000.0)
+
+        apply_fill(
+            self.conn,
+            order_id="order-entry-2",
+            filled_price=1005.0,
+            filled_qty=100,
+            oir_rank_bucket="A",
+            gap_rate_bucket="B",
+            fee=77.0,
+        )
+        self.conn.commit()
+
+        entry_fee, entry_fee_source = self.conn.execute(
+            "SELECT entry_fee, entry_fee_source FROM positions WHERE symbol_code = ?",
+            (_SYMBOL_CODE,),
+        ).fetchone()
+        self.assertEqual(entry_fee, 77.0)
+        self.assertEqual(entry_fee_source, "API_AUTO")
 
     def test_tp_closes_position_and_creates_trade(self) -> None:
         position_id = "pos-1"
-        self.conn.execute(
-            """
-            INSERT INTO positions (
-                position_id, symbol_code, qty, entry_price,
-                entry_oir_rank_bucket, entry_gap_rate_bucket,
-                status, opened_at, closed_at
-            ) VALUES (?, ?, 100, 1000.0, 'A', 'B', 'OPEN', ?, NULL)
-            """,
-            (position_id, _SYMBOL_CODE, _NOW),
-        )
-        self.conn.commit()
+        self._insert_open_position(position_id, entry_fee=50, entry_fee_source="CALCULATED")
         self._insert_order("order-tp-1", "SELL", "TP", 100, 1050.0)
 
         apply_fill(
@@ -125,7 +156,8 @@ class TestApplyFill(unittest.TestCase):
                    entry_price, exit_price, qty, pnl,
                    oir_rank_bucket, gap_rate_bucket,
                    jibai_value, jibai_label, kill_flag, mfe, mae,
-                   settlement_9_30_price, fee, fee_source
+                   settlement_9_30_price, entry_fee, entry_fee_source,
+                   exit_fee, exit_fee_source
             FROM trades
             """
         ).fetchall()
@@ -147,23 +179,16 @@ class TestApplyFill(unittest.TestCase):
         self.assertIsNone(trade[13])  # mfe
         self.assertIsNone(trade[14])  # mae
         self.assertIsNone(trade[15])  # settlement_9_30_price
+        # positionsに保持していたentry_feeがそのまま引き継がれる
+        self.assertEqual(trade[16], 50)  # entry_fee
+        self.assertEqual(trade[17], "CALCULATED")  # entry_fee_source
         # 約定代金 = 1050.0 * 100 = 105,000円 -> 手数料テーブルの2段階目(88円)
-        self.assertEqual(trade[16], 88)  # fee (CALCULATED)
-        self.assertEqual(trade[17], "CALCULATED")  # fee_source
+        self.assertEqual(trade[18], 88)  # exit_fee (CALCULATED)
+        self.assertEqual(trade[19], "CALCULATED")  # exit_fee_source
 
     def test_exit_fill_with_broker_reported_fee_uses_api_auto(self) -> None:
         position_id = "pos-2"
-        self.conn.execute(
-            """
-            INSERT INTO positions (
-                position_id, symbol_code, qty, entry_price,
-                entry_oir_rank_bucket, entry_gap_rate_bucket,
-                status, opened_at, closed_at
-            ) VALUES (?, ?, 100, 1000.0, 'A', 'B', 'OPEN', ?, NULL)
-            """,
-            (position_id, _SYMBOL_CODE, _NOW),
-        )
-        self.conn.commit()
+        self._insert_open_position(position_id, entry_fee=60, entry_fee_source="CALCULATED")
         self._insert_order("order-tp-2", "SELL", "TP", 100, 1050.0)
 
         apply_fill(
@@ -175,11 +200,17 @@ class TestApplyFill(unittest.TestCase):
         )
         self.conn.commit()
 
-        fee, fee_source = self.conn.execute(
-            "SELECT fee, fee_source FROM trades WHERE position_id = ?", (position_id,)
+        entry_fee, entry_fee_source, exit_fee, exit_fee_source = self.conn.execute(
+            """
+            SELECT entry_fee, entry_fee_source, exit_fee, exit_fee_source
+            FROM trades WHERE position_id = ?
+            """,
+            (position_id,),
         ).fetchone()
-        self.assertEqual(fee, 123.0)
-        self.assertEqual(fee_source, "API_AUTO")
+        self.assertEqual(entry_fee, 60)
+        self.assertEqual(entry_fee_source, "CALCULATED")
+        self.assertEqual(exit_fee, 123.0)
+        self.assertEqual(exit_fee_source, "API_AUTO")
 
 
 if __name__ == "__main__":
