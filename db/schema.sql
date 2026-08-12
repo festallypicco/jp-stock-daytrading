@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS trades (
     mfe                                        REAL,
     mae                                         REAL,
     settlement_9_30_price                        REAL,
+    fee                                          INTEGER,             -- 決済（exit）約定にかかった手数料（円）
+    fee_source                                   TEXT CHECK (fee_source IN ('API_AUTO', 'CALCULATED')),
     created_at                                    TEXT NOT NULL
 );
 
@@ -120,9 +122,26 @@ CREATE TABLE IF NOT EXISTS system_halts (
 
 CREATE TABLE IF NOT EXISTS eod_checks (
     trade_date              TEXT PRIMARY KEY,
-    orphan_position_found   INTEGER NOT NULL DEFAULT 0,
+    orphan_position_found   INTEGER NOT NULL DEFAULT 0,  -- db_only/broker_only/qty_mismatchのいずれかが1件以上あれば1
+    db_only_count           INTEGER NOT NULL DEFAULT 0,  -- DB上OPENだがbroker側に存在しない銘柄数
+    broker_only_count       INTEGER NOT NULL DEFAULT 0,  -- broker側に存在するがDBに記録が無い銘柄数（最重要）
+    qty_mismatch_count      INTEGER NOT NULL DEFAULT 0,  -- 両方に存在するが数量が異なる銘柄数
     balance_diff            REAL,
     checked_at              TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS balance_adjustments (
+    adjustment_id   TEXT PRIMARY KEY,          -- UUID v7
+    adjustment_type TEXT NOT NULL CHECK (
+        adjustment_type IN (
+            'INITIAL_BALANCE', 'DEPOSIT', 'WITHDRAWAL', 'DIVIDEND',
+            'FEE_CORRECTION', 'MANUAL_CORRECTION'
+        )
+    ),
+    source          TEXT NOT NULL CHECK (source IN ('API_AUTO', 'MANUAL')),
+    amount          INTEGER NOT NULL,          -- 円。入金・配当・初期残高はプラス、出金はマイナス
+    memo            TEXT,
+    recorded_at     TEXT NOT NULL              -- JST ISO8601文字列
 );
 
 CREATE TABLE IF NOT EXISTS walk_forward_results (

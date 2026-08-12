@@ -154,6 +154,8 @@ CREATE TABLE IF NOT EXISTS trades (
     mfe                                        REAL,
     mae                                         REAL,
     settlement_9_30_price                        REAL,
+    fee                                          INTEGER,
+    fee_source                                   TEXT CHECK (fee_source IN ('API_AUTO', 'CALCULATED')),
     created_at                                    TEXT NOT NULL
 );
 ```
@@ -161,6 +163,8 @@ CREATE TABLE IF NOT EXISTS trades (
 - `position_id`：どのポジションの決済かを追跡（手動対応時の突き合わせ用）
 - `exit_order_id`：決済を確定させた`orders`レコードへの参照
 - `apply_fill`時に`orders`/`positions`更新と同一トランザクションで即時INSERTし、`mfe`/`mae`/`settlement_9_30_price`は`NULL`のまま保存。9:30以降の冪等なバッチ（`WHERE mfe IS NULL`等）でUPDATEする
+- `fee`：当該決済（exit）約定にかかった手数料（円）。証券会社APIの約定照会レスポンスに手数料フィールドがあればその値を採用（`fee_source='API_AUTO'`）、無ければ`config/fee_schedule.py`の手数料体系から約定代金（`filled_price * filled_qty`）を基に自前計算する（`fee_source='CALCULATED'`）。エントリー側の手数料は現状どこにも記録しておらず、`fee`は決済側のみの手数料である点に注意（将来`orders`または`positions`にエントリー手数料列を追加する余地あり）
+- `fee_source`：`API_AUTO`／`CALCULATED`のいずれか。`MockBrokerClient`は現時点で手数料情報を返さないため、モック環境では常に`CALCULATED`になる
 
 ## 9. system_halts — システム監視
 
@@ -213,12 +217,45 @@ CREATE TABLE IF NOT EXISTS system_halts (
 CREATE TABLE IF NOT EXISTS eod_checks (
     trade_date              TEXT PRIMARY KEY,
     orphan_position_found   INTEGER NOT NULL DEFAULT 0,
+    db_only_count           INTEGER NOT NULL DEFAULT 0,
+    broker_only_count       INTEGER NOT NULL DEFAULT 0,
+    qty_mismatch_count      INTEGER NOT NULL DEFAULT 0,
     balance_diff            REAL,
     checked_at              TEXT NOT NULL
 );
 ```
 
-## 11. walk_forward_results — ウォークフォワード検証結果
+- `orphan_position_found`：`check_position_consistency()`が検知した`db_only`/`broker_only`/`qty_mismatch`のいずれか1件でもあれば`1`（旧仕様の単純フラグを踏襲しつつ、詳細は下記3列で区別する）
+- `db_only_count`／`broker_only_count`／`qty_mismatch_count`：`check_position_consistency()`が検知した各パターンの件数。`broker_only`（DBに記録の無い実在建玉）が最重要で、検知時はTelegram Alertsへ最優先で緊急発報する
+- `check_position_consistency()`と`check_balance_consistency()`は同じ`trade_date`の行を`INSERT ... ON CONFLICT(trade_date) DO UPDATE`で更新するが、互いに自分が担当する列のみを更新し、もう一方が書き込んだ列は上書きしない
+- `balance_diff`：`check_balance_consistency()`が計算した`broker.get_account_balance() - calculate_expected_balance()`の差分。差異があってもDB側は自動修正せず、Telegram Alertsへ発報するのみ
+
+**証券会社APIの残高フィールドの解釈について（要再確認）**：`check_balance_consistency()`は`broker.get_account_balance()`の返り値を「現金残高」相当として`calculate_expected_balance()`と比較している。これは現状の`MockBrokerClient.get_account_balance()`の仮実装（コンストラクタ引数`initial_balance`をそのまま返すだけ）に合わせた暫定的な解釈であり、本番の証券会社API接続時には、そのAPIが返す値が「買付余力（信用建玉等を考慮した発注可能額）」なのか「単純な現金残高」なのかを必ず再確認し、`calculate_expected_balance()`の集計方針（入出金・実現損益・手数料の積み上げ）と意味的に一致する値を使うよう見直すこと
+
+## 11. balance_adjustments — 入出金・初期残高等の手動/自動調整履歴
+
+```sql
+CREATE TABLE IF NOT EXISTS balance_adjustments (
+    adjustment_id   TEXT PRIMARY KEY,          -- UUID v7
+    adjustment_type TEXT NOT NULL CHECK (
+        adjustment_type IN (
+            'INITIAL_BALANCE', 'DEPOSIT', 'WITHDRAWAL', 'DIVIDEND',
+            'FEE_CORRECTION', 'MANUAL_CORRECTION'
+        )
+    ),
+    source          TEXT NOT NULL CHECK (source IN ('API_AUTO', 'MANUAL')),
+    amount          INTEGER NOT NULL,
+    memo            TEXT,
+    recorded_at     TEXT NOT NULL
+);
+```
+
+- `amount`：円。入金・配当・初期残高はプラス、出金はマイナスで記録する
+- `INITIAL_BALANCE`：システム初回起動時（`balance_adjustments`が0件の時）にのみ、`src/accounting/ledger_init.py`の`seed_initial_balance()`が`broker.get_account_balance()`を1回呼び出し`source='API_AUTO'`で自動記録する。2回目以降の起動では何もしない（冪等）
+- DB想定残高は`src/accounting/ledger.py`の`calculate_expected_balance()`で
+  `Σ balance_adjustments.amount + Σ trades.pnl - Σ trades.fee` として算出する
+
+## 12. walk_forward_results — ウォークフォワード検証結果
 
 ```sql
 CREATE TABLE IF NOT EXISTS walk_forward_results (

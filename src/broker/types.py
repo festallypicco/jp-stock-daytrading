@@ -29,6 +29,7 @@ class OrderStatusResult:
     status: str  # 'PENDING', 'FILLED', 'CANCELLED', 'REJECTED', 'UNKNOWN'
     filled_price: float | None
     filled_qty: int | None
+    fee: float | None = None  # 証券会社が約定照会レスポンスで返す手数料（無ければNone）
 
 
 @dataclass(frozen=True)

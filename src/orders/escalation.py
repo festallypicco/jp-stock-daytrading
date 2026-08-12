@@ -116,6 +116,7 @@ def escalate_to_market(
                 order_id=escalation_order_id,
                 filled_price=status_result.filled_price,
                 filled_qty=filled_qty,
+                fee=status_result.fee,
             )
             conn.commit()
             return escalation_order_id

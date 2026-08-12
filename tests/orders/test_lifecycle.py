@@ -125,7 +125,7 @@ class TestApplyFill(unittest.TestCase):
                    entry_price, exit_price, qty, pnl,
                    oir_rank_bucket, gap_rate_bucket,
                    jibai_value, jibai_label, kill_flag, mfe, mae,
-                   settlement_9_30_price
+                   settlement_9_30_price, fee, fee_source
             FROM trades
             """
         ).fetchall()
@@ -147,6 +147,39 @@ class TestApplyFill(unittest.TestCase):
         self.assertIsNone(trade[13])  # mfe
         self.assertIsNone(trade[14])  # mae
         self.assertIsNone(trade[15])  # settlement_9_30_price
+        # 約定代金 = 1050.0 * 100 = 105,000円 -> 手数料テーブルの2段階目(88円)
+        self.assertEqual(trade[16], 88)  # fee (CALCULATED)
+        self.assertEqual(trade[17], "CALCULATED")  # fee_source
+
+    def test_exit_fill_with_broker_reported_fee_uses_api_auto(self) -> None:
+        position_id = "pos-2"
+        self.conn.execute(
+            """
+            INSERT INTO positions (
+                position_id, symbol_code, qty, entry_price,
+                entry_oir_rank_bucket, entry_gap_rate_bucket,
+                status, opened_at, closed_at
+            ) VALUES (?, ?, 100, 1000.0, 'A', 'B', 'OPEN', ?, NULL)
+            """,
+            (position_id, _SYMBOL_CODE, _NOW),
+        )
+        self.conn.commit()
+        self._insert_order("order-tp-2", "SELL", "TP", 100, 1050.0)
+
+        apply_fill(
+            self.conn,
+            order_id="order-tp-2",
+            filled_price=1050.0,
+            filled_qty=100,
+            fee=123.0,
+        )
+        self.conn.commit()
+
+        fee, fee_source = self.conn.execute(
+            "SELECT fee, fee_source FROM trades WHERE position_id = ?", (position_id,)
+        ).fetchone()
+        self.assertEqual(fee, 123.0)
+        self.assertEqual(fee_source, "API_AUTO")
 
 
 if __name__ == "__main__":

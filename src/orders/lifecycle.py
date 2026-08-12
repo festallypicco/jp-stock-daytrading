@@ -9,6 +9,7 @@ import sqlite3
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from config.fee_schedule import calculate_fee
 from src.common.ids import uuid7
 
 _JST = ZoneInfo("Asia/Tokyo")
@@ -27,6 +28,7 @@ def apply_fill(
     filled_qty: int,
     oir_rank_bucket: str | None = None,
     gap_rate_bucket: str | None = None,
+    fee: float | None = None,
 ) -> None:
     order_row = conn.execute(
         """
@@ -72,6 +74,7 @@ def apply_fill(
             order_id=order_id,
             filled_price=filled_price,
             filled_qty=filled_qty,
+            fee=fee,
             now=now,
         )
         return
@@ -119,6 +122,7 @@ def _apply_exit_fill(
     order_id: str,
     filled_price: float,
     filled_qty: int,
+    fee: float | None,
     now: str,
 ) -> None:
     position_row = conn.execute(
@@ -168,6 +172,14 @@ def _apply_exit_fill(
         )
 
     pnl = (filled_price - entry_price) * filled_qty
+
+    if fee is not None:
+        fee_amount = fee
+        fee_source = "API_AUTO"
+    else:
+        fee_amount = calculate_fee(filled_price * filled_qty)
+        fee_source = "CALCULATED"
+
     trade_id = uuid7()
     conn.execute(
         """
@@ -176,8 +188,9 @@ def _apply_exit_fill(
             entry_price, exit_price, qty, pnl,
             oir_rank_bucket, gap_rate_bucket,
             jibai_value, jibai_label, kill_flag, mfe, mae, settlement_9_30_price,
+            fee, fee_source,
             created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, NULL, NULL, NULL, ?, ?, ?)
         """,
         (
             trade_id,
@@ -192,6 +205,8 @@ def _apply_exit_fill(
             pnl,
             entry_oir_rank_bucket,
             entry_gap_rate_bucket,
+            fee_amount,
+            fee_source,
             now,
         ),
     )

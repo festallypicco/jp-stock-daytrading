@@ -186,6 +186,7 @@ def submit_exit_order(
                 order_id=order_id,
                 filled_price=filled_price,
                 filled_qty=filled_qty,
+                fee=status_result.fee,
             )
             conn.commit()
             return order_id
