@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS tuning_parameters (
     parameter_name   TEXT PRIMARY KEY,   -- 'buy_surge_threshold' / 'sell_surge_threshold'
     current_value    REAL NOT NULL,
     effective_since  TEXT NOT NULL,      -- この値になった日時（JST ISO8601）。実トレード件数カウントの起点
+    mode             TEXT NOT NULL DEFAULT 'SHADOW' CHECK (mode IN ('SHADOW', 'LIVE')),
     updated_at       TEXT NOT NULL
 );
 

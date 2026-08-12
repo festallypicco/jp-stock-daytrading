@@ -30,8 +30,22 @@ def _next_trading_day(from_date: str) -> str:
     return current_date.strftime("%Y-%m-%d")
 
 
+def _get_active_threshold(conn: sqlite3.Connection, parameter_name: str, fallback: float) -> float:
+    """tuning_parametersから現在値を取得する。行が無ければfallbackを返す。"""
+    row = conn.execute(
+        "SELECT current_value FROM tuning_parameters WHERE parameter_name = ?",
+        (parameter_name,),
+    ).fetchone()
+    if row is None:
+        return fallback
+    return row[0]
+
+
 def generate_watchlist(conn: sqlite3.Connection, trade_date: str) -> None:
     """signal_scoresの4時点データから翌営業日の優先監視リストを生成する。"""
+    buy_threshold = _get_active_threshold(conn, "buy_surge_threshold", OIR_SUDDEN_BUY_THRESHOLD)
+    sell_threshold = _get_active_threshold(conn, "sell_surge_threshold", OIR_SUDDEN_SELL_THRESHOLD)
+
     symbol_rows = conn.execute(
         f"""
         SELECT code
@@ -63,7 +77,7 @@ def generate_watchlist(conn: sqlite3.Connection, trade_date: str) -> None:
         ) / 3
         diff = scores_by_time["14:55"] - scores_by_time["14:45"]
 
-        if diff <= OIR_SUDDEN_SELL_THRESHOLD or diff >= OIR_SUDDEN_BUY_THRESHOLD:
+        if diff <= sell_threshold or diff >= buy_threshold:
             continue
 
         candidates.append((symbol_code, avg_score))

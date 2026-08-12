@@ -33,6 +33,7 @@ class ReviewOutcome:
     moderator_reasoning: str | None
     failed: bool
     failure_reason: str | None  # 'llm_call_failed' / 'validation_failed' / None
+    failure_detail: str | None = None  # 失敗時の例外メッセージ（reasonの補足用、成功時はNone）
 
 
 def _parse_moderator_output(moderator_output: str) -> tuple[float, str]:
@@ -53,7 +54,7 @@ def run_weekly_review(conn: sqlite3.Connection, parameter_name: str) -> ReviewOu
     """build_review_summary→Proposer→Skeptic→Moderatorの順に3役討議を実行する。"""
     summary = build_review_summary(conn, parameter_name)
 
-    def _failed(failure_reason: str) -> ReviewOutcome:
+    def _failed(failure_reason: str, detail: str | None = None) -> ReviewOutcome:
         return ReviewOutcome(
             parameter_name=parameter_name,
             summary=summary,
@@ -61,39 +62,42 @@ def run_weekly_review(conn: sqlite3.Connection, parameter_name: str) -> ReviewOu
             moderator_reasoning=None,
             failed=True,
             failure_reason=failure_reason,
+            failure_detail=detail,
         )
 
     try:
         proposer_output = call_with_retry(
             lambda: call_groq(build_proposer_prompt(summary), _PROPOSER_MODEL)
         )
-    except Exception:
-        return _failed("llm_call_failed")
+    except Exception as exc:
+        return _failed("llm_call_failed", str(exc))
 
     try:
         skeptic_output = call_with_retry(
             lambda: call_gemini(build_skeptic_prompt(summary, proposer_output), _SKEPTIC_MODEL)
         )
-    except Exception:
-        return _failed("llm_call_failed")
+    except Exception as exc:
+        return _failed("llm_call_failed", str(exc))
 
     moderator_prompt = build_moderator_prompt(summary, proposer_output, skeptic_output)
 
     attempts_used = 0
+    last_validation_error: str | None = None
     while True:
         try:
             moderator_output = call_with_retry(
                 lambda: call_gemini(moderator_prompt, _MODERATOR_MODEL)
             )
-        except Exception:
-            return _failed("llm_call_failed")
+        except Exception as exc:
+            return _failed("llm_call_failed", str(exc))
 
         try:
             proposed_value, reasoning = _parse_moderator_output(moderator_output)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            last_validation_error = str(exc)
             attempts_used += 1
             if attempts_used > _MODERATOR_MAX_RETRIES:
-                return _failed("validation_failed")
+                return _failed("validation_failed", last_validation_error)
             continue
 
         return ReviewOutcome(

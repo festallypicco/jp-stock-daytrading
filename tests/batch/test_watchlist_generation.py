@@ -8,7 +8,13 @@ import tempfile
 import unittest
 
 from db.initializer import init_db
-from src.batch.watchlist_generation import _next_trading_day, generate_watchlist
+from src.batch.watchlist_generation import (
+    OIR_SUDDEN_BUY_THRESHOLD,
+    OIR_SUDDEN_SELL_THRESHOLD,
+    _get_active_threshold,
+    _next_trading_day,
+    generate_watchlist,
+)
 
 _NOW = "2026-08-10T09:00:00+09:00"
 _TRADE_DATE = "2026-08-11"  # 火曜日想定 -> 翌営業日は2026-08-12
@@ -156,6 +162,69 @@ class TestGenerateWatchlistLimitsToTopTen(_BaseWatchlistGenerationTest):
             "SELECT oir_eval_score FROM watchlist_daily WHERE rank = 10"
         ).fetchone()[0]
         self.assertAlmostEqual(rank_ten_score, 1.0 - 9 * 0.05)
+
+
+class TestGetActiveThreshold(_BaseWatchlistGenerationTest):
+    def test_returns_fallback_sell_threshold_when_parameter_row_is_absent(self) -> None:
+        self.conn.execute(
+            "DELETE FROM tuning_parameters WHERE parameter_name = 'sell_surge_threshold'"
+        )
+        self.conn.commit()
+
+        result = _get_active_threshold(self.conn, "sell_surge_threshold", OIR_SUDDEN_SELL_THRESHOLD)
+
+        self.assertEqual(result, OIR_SUDDEN_SELL_THRESHOLD)
+
+    def test_returns_fallback_when_parameter_row_is_absent(self) -> None:
+        self.conn.execute(
+            "DELETE FROM tuning_parameters WHERE parameter_name = 'buy_surge_threshold'"
+        )
+        self.conn.commit()
+
+        result = _get_active_threshold(self.conn, "buy_surge_threshold", OIR_SUDDEN_BUY_THRESHOLD)
+
+        self.assertEqual(result, OIR_SUDDEN_BUY_THRESHOLD)
+
+    def test_returns_current_value_when_parameter_row_exists(self) -> None:
+        self.conn.execute(
+            "UPDATE tuning_parameters SET current_value = 0.45 WHERE parameter_name = 'buy_surge_threshold'"
+        )
+        self.conn.commit()
+
+        result = _get_active_threshold(self.conn, "buy_surge_threshold", OIR_SUDDEN_BUY_THRESHOLD)
+
+        self.assertEqual(result, 0.45)
+
+
+class TestGenerateWatchlistUsesTunedThreshold(_BaseWatchlistGenerationTest):
+    def test_generate_watchlist_uses_tuning_parameters_value_over_fallback(self) -> None:
+        self._insert_symbol("1111")
+        # diff = 14:55(0.5) - 14:45(0.1) = 0.4。既定のOIR_SUDDEN_BUY_THRESHOLD(0.3)なら
+        # 除外されるが、tuning_parametersでbuy_surge_thresholdを0.5に引き上げると除外されない。
+        self._insert_full_scores("1111", 0.1, 0.1, 0.1, 0.5)
+        self.conn.execute(
+            "UPDATE tuning_parameters SET current_value = 0.5 WHERE parameter_name = 'buy_surge_threshold'"
+        )
+        self.conn.commit()
+
+        generate_watchlist(self.conn, _TRADE_DATE)
+
+        count = self.conn.execute("SELECT COUNT(*) FROM watchlist_daily").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_generate_watchlist_falls_back_to_hardcoded_constant_without_tuning_row(self) -> None:
+        self.conn.execute(
+            "DELETE FROM tuning_parameters WHERE parameter_name IN "
+            "('buy_surge_threshold', 'sell_surge_threshold')"
+        )
+        self.conn.commit()
+        self._insert_symbol("1111")
+        self._insert_full_scores("1111", 0.4, 0.4, 0.4, 0.1)  # diff=-0.3 <= -0.2 -> 除外
+
+        generate_watchlist(self.conn, _TRADE_DATE)
+
+        count = self.conn.execute("SELECT COUNT(*) FROM watchlist_daily").fetchone()[0]
+        self.assertEqual(count, 0)
 
 
 class TestNextTradingDay(unittest.TestCase):

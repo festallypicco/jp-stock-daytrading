@@ -54,7 +54,7 @@ class _BaseSummaryTest(unittest.TestCase):
     def _insert_parameter(self, effective_since: str) -> None:
         self.conn.execute(
             """
-            INSERT INTO tuning_parameters (
+            INSERT OR REPLACE INTO tuning_parameters (
                 parameter_name, current_value, effective_since, updated_at
             ) VALUES (?, ?, ?, ?)
             """,
@@ -93,7 +93,7 @@ class TestBuildReviewSummaryBasics(_BaseSummaryTest):
     def test_parameter_without_hard_limit_raises_value_error(self) -> None:
         self.conn.execute(
             """
-            INSERT INTO tuning_parameters (
+            INSERT OR REPLACE INTO tuning_parameters (
                 parameter_name, current_value, effective_since, updated_at
             ) VALUES ('no_hard_limit_param', 1.0, ?, ?)
             """,
@@ -120,7 +120,7 @@ class TestBuildReviewSummaryBasics(_BaseSummaryTest):
     def test_sell_parameter_uses_its_own_hard_limits(self) -> None:
         self.conn.execute(
             """
-            INSERT INTO tuning_parameters (
+            INSERT OR REPLACE INTO tuning_parameters (
                 parameter_name, current_value, effective_since, updated_at
             ) VALUES ('sell_surge_threshold', -0.20, ?, ?)
             """,

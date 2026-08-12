@@ -42,7 +42,7 @@ class TestEligibility(unittest.TestCase):
     def _insert_parameter(self, effective_since: str = _EFFECTIVE_SINCE) -> None:
         self.conn.execute(
             """
-            INSERT INTO tuning_parameters (
+            INSERT OR REPLACE INTO tuning_parameters (
                 parameter_name, current_value, effective_since, updated_at
             ) VALUES (?, 0.30, ?, ?)
             """,

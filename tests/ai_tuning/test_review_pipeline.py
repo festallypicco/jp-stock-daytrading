@@ -30,7 +30,7 @@ class TestRunWeeklyReview(unittest.TestCase):
         now = datetime.now(_JST).isoformat()
         self.conn.execute(
             """
-            INSERT INTO tuning_parameters (
+            INSERT OR REPLACE INTO tuning_parameters (
                 parameter_name, current_value, effective_since, updated_at
             ) VALUES (?, 0.30, ?, ?)
             """,
