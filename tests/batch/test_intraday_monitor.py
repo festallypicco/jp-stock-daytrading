@@ -18,6 +18,7 @@ from src.batch.intraday_monitor import (
 )
 from src.broker.mock_client import MockBrokerClient
 from src.broker.types import OrderRequest
+from src.orders.order_submission import ExitOrderHeld
 
 _JST = ZoneInfo("Asia/Tokyo")
 _SYMBOL_CODE = "7203"
@@ -51,6 +52,18 @@ class _BaseIntradayMonitorTest(unittest.TestCase):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
+    def _insert_symbol_row(self, code: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO symbols (
+                code, name, status, is_dynamically_excluded,
+                dynamic_exclusion_reason, status_updated_at, added_at
+            ) VALUES (?, ?, 'active', 0, NULL, ?, ?)
+            """,
+            (code, f"銘柄{code}", _NOW, _NOW),
+        )
+        self.conn.commit()
+
     def _insert_market_data(self, atr14: float) -> None:
         self.conn.execute(
             """
@@ -68,6 +81,7 @@ class _BaseIntradayMonitorTest(unittest.TestCase):
         entry_price: float = 1000.0,
         qty: int = 100,
         sl_breakeven_activated: int = 0,
+        symbol_code: str = _SYMBOL_CODE,
     ) -> dict:
         self.conn.execute(
             """
@@ -77,12 +91,12 @@ class _BaseIntradayMonitorTest(unittest.TestCase):
                 sl_breakeven_activated, status, opened_at, closed_at
             ) VALUES (?, ?, ?, ?, 'A', 'B', ?, 'OPEN', ?, NULL)
             """,
-            (position_id, _SYMBOL_CODE, qty, entry_price, sl_breakeven_activated, _NOW),
+            (position_id, symbol_code, qty, entry_price, sl_breakeven_activated, _NOW),
         )
         self.conn.commit()
         return {
             "position_id": position_id,
-            "symbol_code": _SYMBOL_CODE,
+            "symbol_code": symbol_code,
             "qty": qty,
             "entry_price": entry_price,
             "sl_breakeven_activated": sl_breakeven_activated,
@@ -268,7 +282,9 @@ class TestForceExitAll(_BaseIntradayMonitorTest):
         broker = MockBrokerClient(initial_prices={_SYMBOL_CODE: 1010.0})
         self._insert_pending_tp_order(broker, order_id="order-tp-1", price=1015.0)
 
-        _force_exit_all(self.conn, broker)
+        unresolved_symbols = _force_exit_all(self.conn, broker)
+
+        self.assertEqual(unresolved_symbols, [])
 
         order_row = self.conn.execute(
             "SELECT order_role, order_type, status, price FROM orders WHERE order_role = 'FORCE_EXIT'"
@@ -286,17 +302,42 @@ class TestForceExitAll(_BaseIntradayMonitorTest):
         ).fetchone()
         self.assertEqual(position_status, ("CLOSED", 0))
 
+    @patch("src.batch.intraday_monitor.submit_exit_order")
+    def test_returns_only_symbols_that_raised_exit_order_held(
+        self, mock_submit_exit_order
+    ) -> None:
+        _OTHER_SYMBOL = "6758"
+        self._insert_symbol_row(_OTHER_SYMBOL)
+        self._insert_open_position(position_id="pos-1", entry_price=1000.0, qty=100)
+        self._insert_open_position(
+            position_id="pos-2", entry_price=2000.0, qty=50, symbol_code=_OTHER_SYMBOL
+        )
+        broker = MockBrokerClient()
+
+        def _side_effect(conn, broker_arg, request):
+            if request.symbol_code == _OTHER_SYMBOL:
+                raise ExitOrderHeld("infra halt continues")
+            return "order-resolved"
+
+        mock_submit_exit_order.side_effect = _side_effect
+
+        unresolved_symbols = _force_exit_all(self.conn, broker)
+
+        self.assertEqual(unresolved_symbols, [_OTHER_SYMBOL])
+
 
 class TestRunIntradayMonitor(_BaseIntradayMonitorTest):
+    @patch("src.batch.intraday_monitor.send_telegram_alert")
     @patch("src.batch.intraday_monitor._force_exit_all")
     @patch("src.batch.intraday_monitor.time.sleep")
     @patch("src.batch.intraday_monitor.datetime")
     def test_stops_loop_and_force_exits_when_end_time_reached(
-        self, mock_datetime, mock_sleep, mock_force_exit_all
+        self, mock_datetime, mock_sleep, mock_force_exit_all, mock_send_alert
     ) -> None:
         before_end = datetime(2026, 8, 11, 14, 0, tzinfo=_JST)
         after_end = datetime(2026, 8, 11, 14, 31, tzinfo=_JST)
         mock_datetime.now.side_effect = [before_end, after_end]
+        mock_force_exit_all.return_value = []
 
         broker = MockBrokerClient()
 
@@ -304,6 +345,55 @@ class TestRunIntradayMonitor(_BaseIntradayMonitorTest):
 
         mock_force_exit_all.assert_called_once_with(self.conn, broker)
         mock_sleep.assert_called_once_with(0.0)
+        mock_send_alert.assert_not_called()
+
+
+class TestRunIntradayMonitorForceExitAlert(_BaseIntradayMonitorTest):
+    @patch("src.batch.intraday_monitor.send_telegram_alert")
+    @patch("src.batch.intraday_monitor.submit_exit_order")
+    @patch("src.batch.intraday_monitor.time.sleep")
+    @patch("src.batch.intraday_monitor.datetime")
+    def test_alert_sent_when_some_positions_remain_unresolved(
+        self, mock_datetime, mock_sleep, mock_submit_exit_order, mock_send_alert
+    ) -> None:
+        _OTHER_SYMBOL = "6758"
+        self._insert_symbol_row(_OTHER_SYMBOL)
+        self._insert_open_position(position_id="pos-1", entry_price=1000.0, qty=100)
+        self._insert_open_position(
+            position_id="pos-2", entry_price=2000.0, qty=50, symbol_code=_OTHER_SYMBOL
+        )
+        after_end = datetime(2026, 8, 11, 14, 31, tzinfo=_JST)
+        mock_datetime.now.return_value = after_end
+
+        def _side_effect(conn, broker_arg, request):
+            if request.symbol_code == _OTHER_SYMBOL:
+                raise ExitOrderHeld("infra halt continues")
+            return "order-resolved"
+
+        mock_submit_exit_order.side_effect = _side_effect
+        broker = MockBrokerClient()
+
+        run_intraday_monitor(self.conn, broker, poll_interval_sec=0.0)
+
+        mock_send_alert.assert_called_once()
+        alert_message = mock_send_alert.call_args[0][0]
+        self.assertIn(_OTHER_SYMBOL, alert_message)
+        self.assertNotIn(_SYMBOL_CODE, alert_message)
+
+    @patch("src.batch.intraday_monitor.send_telegram_alert")
+    @patch("src.batch.intraday_monitor.time.sleep")
+    @patch("src.batch.intraday_monitor.datetime")
+    def test_no_alert_when_all_positions_resolved(
+        self, mock_datetime, mock_sleep, mock_send_alert
+    ) -> None:
+        self._insert_open_position(entry_price=1000.0, qty=100)
+        after_end = datetime(2026, 8, 11, 14, 31, tzinfo=_JST)
+        mock_datetime.now.return_value = after_end
+        broker = MockBrokerClient(initial_prices={_SYMBOL_CODE: 1010.0})
+
+        run_intraday_monitor(self.conn, broker, poll_interval_sec=0.0)
+
+        mock_send_alert.assert_not_called()
 
 
 if __name__ == "__main__":

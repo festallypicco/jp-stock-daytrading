@@ -13,6 +13,7 @@ import time
 from datetime import datetime, time as dt_time
 from zoneinfo import ZoneInfo
 
+from db.initializer import send_telegram_alert
 from src.broker.base import BrokerClient
 from src.broker.types import OrderRequest
 from src.orders.lifecycle import apply_fill
@@ -175,7 +176,9 @@ def _process_position(
     _check_stop_loss(conn, broker, position_row)
 
 
-def _force_exit_all(conn: sqlite3.Connection, broker: BrokerClient) -> None:
+def _force_exit_all(conn: sqlite3.Connection, broker: BrokerClient) -> list[str]:
+    unresolved_symbols: list[str] = []
+
     for position_row in _fetch_open_positions(conn):
         _cancel_pending_tp_if_any(conn, broker, position_row)
 
@@ -191,7 +194,10 @@ def _force_exit_all(conn: sqlite3.Connection, broker: BrokerClient) -> None:
         try:
             submit_exit_order(conn, broker, force_exit_request)
         except ExitOrderHeld:
+            unresolved_symbols.append(position_row["symbol_code"])
             continue
+
+    return unresolved_symbols
 
 
 def run_intraday_monitor(
@@ -208,7 +214,12 @@ def run_intraday_monitor(
         open_positions = _fetch_open_positions(conn)
 
         if datetime.now(_JST).time() >= end_time:
-            _force_exit_all(conn, broker)
+            unresolved_symbols = _force_exit_all(conn, broker)
+            if unresolved_symbols:
+                send_telegram_alert(
+                    f"[URGENT] 14:30強制決済に失敗した銘柄があります（インフラ障害継続中）: "
+                    f"{unresolved_symbols}。市場終了(15:00)までに証券会社の画面から手動決済を検討してください。"
+                )
             return
 
         for position_row in open_positions:
