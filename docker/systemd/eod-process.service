@@ -1,0 +1,8 @@
+[Unit]
+Description=End-of-day reconciliation & reporting batch (jp-stock-daytrading)
+
+[Service]
+Type=oneshot
+# TODO: 実際のデプロイパスに置換すること
+WorkingDirectory=/path/to/jp-stock-daytrading
+ExecStart=/usr/bin/docker compose -f docker/docker-compose.yml exec -T jp-stock-daytrading-app python -m src.entrypoints.eod_process

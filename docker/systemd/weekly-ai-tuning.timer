@@ -1,0 +1,12 @@
+[Unit]
+Description=Run weekly-ai-tuning every Saturday
+
+[Timer]
+# 週次・土曜固定実行。run_weekly_ai_tuning()はis_trading_dayによるカレンダー
+# ガードを持たない設計のため（土曜はis_trading_day()がFalseになる）、
+# 祝日カレンダー未対応の影響は受けない。
+OnCalendar=Sat 10:00:00 Asia/Tokyo
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Intraday position monitor (jp-stock-daytrading)
+# StartLimitIntervalSec/StartLimitBurstはsystemd 230以降、[Unit]セクションで
+# 指定するのが正式な配置（[Service]配置は非推奨のため[Unit]側に置いている）
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+# TODO: 実際のデプロイパスに置換すること
+WorkingDirectory=/path/to/jp-stock-daytrading
+ExecStart=/usr/bin/docker compose -f docker/docker-compose.yml exec -T jp-stock-daytrading-app python -m src.entrypoints.intraday_monitor
+Restart=on-failure
+RestartSec=10s

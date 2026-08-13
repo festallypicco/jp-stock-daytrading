@@ -21,3 +21,62 @@
 
 - 新規テストファイルは必ず `tests/` 配下に作成すること
 - ログ出力に絵文字・特殊 Unicode 文字を使用しないこと
+
+## systemd によるバッチ起動設定
+
+各バッチは `docker/systemd/` 配下の `*.service` / `*.timer` ペアと、ホスト側
+systemd から `docker compose exec` でコンテナ内の処理を起動する構成です。
+実際に呼び出されるコンテナ内処理は `src/entrypoints/` 配下のエントリー
+ポイントスクリプトです。
+
+対象は以下の5バッチです。
+
+| バッチ | unit名 | 実行タイミング |
+|---|---|---|
+| 朝の統合バッチ | `morning-trade` | 平日 8:55 |
+| 板情報収集バッチ | `board-snapshot` | 平日 14:00 / 14:30 / 14:45 / 14:55 |
+| 日中建玉監視 | `intraday-monitor` | 平日 9:05 に起動し常駐（14:30 強制決済後に終了） |
+| 大引け後バッチ | `eod-process` | 平日 15:15 |
+| 週次AIチューニング | `weekly-ai-tuning` | 毎週土曜 10:00 |
+
+### 導入手順
+
+1. `docker/systemd/*.service` の `WorkingDirectory` に記載されている
+   `/path/to/jp-stock-daytrading` を、実際のデプロイ先パスに置換する
+   （プレースホルダーのままでは動作しません）
+2. 各 unit ファイルを `/etc/systemd/system/` へシンボリックリンクまたは
+   コピーする
+
+   ```bash
+   sudo ln -s /path/to/jp-stock-daytrading/docker/systemd/*.service /etc/systemd/system/
+   sudo ln -s /path/to/jp-stock-daytrading/docker/systemd/*.timer /etc/systemd/system/
+   ```
+
+3. systemd に設定を再読み込みさせ、各 timer を有効化・起動する
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now morning-trade.timer
+   sudo systemctl enable --now board-snapshot.timer
+   sudo systemctl enable --now intraday-monitor.timer
+   sudo systemctl enable --now eod-process.timer
+   sudo systemctl enable --now weekly-ai-tuning.timer
+   ```
+
+4. `intraday-monitor` は常駐プロセス（`Type=simple`）のため、`.timer` だけで
+   なく `.service` 自体の稼働状態も確認すること
+
+   ```bash
+   sudo systemctl status intraday-monitor.timer
+   sudo systemctl status intraday-monitor.service
+   ```
+
+### 前提・既知の制約
+
+- `docker compose exec` はコンテナが起動済み（running）であることが前提です。
+  現時点の `docker/Dockerfile` の `CMD` はプレースホルダー（起動後即終了）の
+  ため、常駐する本番用コンテナ構成が別途必要です（本タスクの範囲外）
+- 祝日カレンダーには対応していません。`OnCalendar=Mon-Fri` は土日を除外
+  しますが祝日は除外しないため、祝日にも各バッチが起動されます。ただし
+  バッチ内部の `is_trading_day()` 判定（現状は曜日判定のみ）により空振り
+  する暫定挙動です
