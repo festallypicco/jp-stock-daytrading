@@ -11,12 +11,21 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from config.tuning_limits import HARD_LIMITS
 from src.ai_tuning.decision import evaluate_tuning_candidate
 from src.ai_tuning.mode_transition import check_and_apply_mode_transition
 from src.ai_tuning.review_pipeline import ReviewOutcome, run_weekly_review
 from src.common.ids import uuid7
 
 _JST = ZoneInfo("Asia/Tokyo")
+
+# tuning_history.reasonは他の目的（insufficient_data等のskip_reason、
+# llm_call_failed等のfailure_reason）にも使われる列だが、ハードリミットへの
+# クランプが発生するのは常にdecision.skipped=Falseの経路（SHADOW記録／LIVE適用）
+# であり、そこではreasonがこれまで常にNoneだったため、上書きの心配なく
+# この値を流用できる。新規カラムを追加するスキーマ変更は本タスクの範囲外
+# のため、既存列の再利用で対応する。
+_HARD_LIMIT_CLAMPED_REASON = "hard_limit_clamped"
 
 
 @dataclass(frozen=True)
@@ -37,6 +46,22 @@ def _now_jst_iso() -> str:
 
 def _today_jst_str() -> str:
     return datetime.now(_JST).strftime("%Y-%m-%d")
+
+
+def _clamp_to_hard_limit(parameter_name: str, value: float) -> float:
+    """value を HARD_LIMITS[parameter_name] の範囲内にクランプする。
+
+    HARD_LIMITSの各タプルは(hard_limit_min, hard_limit_max)という名前で定義
+    されているが、sell_surge_threshold等の負値パラメータでは「0に近い側を
+    min」と呼んでいるため、hard_limit_minの方がhard_limit_maxより数値として
+    大きい場合がある（例: (-0.10, -0.30)）。そのためタプルの並び順をそのまま
+    区間の下端・上端とはみなさず、min()/max()で数値としての下限・上限を
+    都度判定してからクランプする。
+    """
+    limit_a, limit_b = HARD_LIMITS[parameter_name]
+    numeric_lower_bound = min(limit_a, limit_b)
+    numeric_upper_bound = max(limit_a, limit_b)
+    return max(numeric_lower_bound, min(value, numeric_upper_bound))
 
 
 def _format_failure_reason(review_outcome: ReviewOutcome) -> str | None:
@@ -148,6 +173,14 @@ def process_parameter_tuning(conn: sqlite3.Connection, parameter_name: str) -> P
             new_value=None,
         )
 
+    # decision.final_value はstep_limit.pyによる変更幅クランプ済みの値だが、
+    # 前回値からの相対的な変更幅しか制限していないため、ハードリミット
+    # （絶対的な上下限）は別途ここで適用する。ステップ上限を回避できても
+    # 複数週にわたるドリフトでハードリミット外へ出ないようにするための措置。
+    hard_limit_applied_value = _clamp_to_hard_limit(parameter_name, decision.final_value)
+    was_hard_limit_clamped = hard_limit_applied_value != decision.final_value
+    clamp_reason = _HARD_LIMIT_CLAMPED_REASON if was_hard_limit_clamped else None
+
     if mode == "SHADOW":
         _insert_tuning_history(
             conn,
@@ -157,17 +190,17 @@ def process_parameter_tuning(conn: sqlite3.Connection, parameter_name: str) -> P
             trade_count_used=decision.trade_count,
             data_sufficient=decision.data_sufficient,
             outlier_detected=outlier_detected,
-            step_limited_value=decision.final_value,
+            step_limited_value=hard_limit_applied_value,
             applied=False,
             mode=mode,
-            reason=None,
+            reason=clamp_reason,
         )
         return ProcessOutcome(
             parameter_name=parameter_name,
             mode=mode,
             review_failed=False,
             skipped=False,
-            reason=None,
+            reason=clamp_reason,
             applied=False,
             old_value=summary.current_value,
             new_value=None,
@@ -181,7 +214,7 @@ def process_parameter_tuning(conn: sqlite3.Connection, parameter_name: str) -> P
         SET current_value = ?, effective_since = ?, updated_at = ?
         WHERE parameter_name = ?
         """,
-        (decision.final_value, now, now, parameter_name),
+        (hard_limit_applied_value, now, now, parameter_name),
     )
     conn.commit()
 
@@ -193,18 +226,18 @@ def process_parameter_tuning(conn: sqlite3.Connection, parameter_name: str) -> P
         trade_count_used=decision.trade_count,
         data_sufficient=decision.data_sufficient,
         outlier_detected=outlier_detected,
-        step_limited_value=decision.final_value,
+        step_limited_value=hard_limit_applied_value,
         applied=True,
         mode=mode,
-        reason=None,
+        reason=clamp_reason,
     )
     return ProcessOutcome(
         parameter_name=parameter_name,
         mode=mode,
         review_failed=False,
         skipped=False,
-        reason=None,
+        reason=clamp_reason,
         applied=True,
         old_value=summary.current_value,
-        new_value=decision.final_value,
+        new_value=hard_limit_applied_value,
     )
