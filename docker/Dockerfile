@@ -24,4 +24,4 @@ COPY --chown=appuser:appuser config/ /app/config/
 
 USER appuser
 
-CMD ["python", "-c", "print('container started')"]
+CMD ["sleep", "infinity"]
