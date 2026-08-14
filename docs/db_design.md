@@ -355,7 +355,7 @@ CREATE TABLE IF NOT EXISTS walk_forward_results (
 
 ### 対象パラメータとハードリミット
 
-`config/tuning_limits.py`の`HARD_LIMITS`。ハードリミットはLLMプロンプトに渡し、Moderatorに範囲内の提案を求める。適用パイプライン側での事後クランプは現状実装していない（ステップ上限のみ機械適用する）。
+`config/tuning_limits.py`の`HARD_LIMITS`。ハードリミットはLLMプロンプトに渡し、Moderatorに範囲内の提案を求める。加えて、`src/ai_tuning/apply.py`の`process_parameter_tuning()`がSHADOW/LIVE適用直前（`decision.final_value`にステップ上限を適用した後）に`_clamp_to_hard_limit()`でハードリミット内へ事後クランプする。LLMがプロンプトの指示を無視した値を提案し続け、ステップ上限を回避して複数週にわたりドリフトした場合でも、最終的にハードリミットの外側の値が`tuning_parameters.current_value`へ書き込まれることは無い。クランプが実際に発生した場合（クランプ前後の値が異なる場合）は`tuning_history.reason`に`'hard_limit_clamped'`が記録される（クランプが発生しなかった通常ケースでは`reason`は従来通り`NULL`のまま）。
 
 | parameter_name | 意味 | 初期値（SHADOWシード／フォールバック） | ハードリミット |
 |---|---|---|---|
