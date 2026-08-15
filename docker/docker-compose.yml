@@ -12,6 +12,19 @@ services:
     networks:
       - jp-stock-daytrading-net
 
+  jp-stock-daytrading-dashboard:
+    container_name: jp-stock-daytrading-dashboard
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: streamlit run src/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "127.0.0.1:8503:8501"
+    volumes:
+      - ../data:/app/data
+    networks:
+      - jp-stock-daytrading-net
+
 networks:
   jp-stock-daytrading-net:
     name: jp-stock-daytrading-net
