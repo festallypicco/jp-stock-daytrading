@@ -1,2 +1,3 @@
 # フェーズ1実装時に証券会社APIクライアント等の依存を追加
 requests
+jpholiday
