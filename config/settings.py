@@ -10,6 +10,9 @@ TACHIBANA_API_ENV: str = os.getenv("TACHIBANA_API_ENV", "demo")
 # SQLiteオンラインバックアップの出力先
 DB_BACKUP_DIR: str = "data/backups"
 
+# SQLite本体のパス（demo/productionで分けない）
+DB_PATH: str = "data/app.db"
+
 
 def is_demo() -> bool:
     return TACHIBANA_API_ENV == "demo"

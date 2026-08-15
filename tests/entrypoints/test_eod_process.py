@@ -28,7 +28,7 @@ class TestEodProcessEntrypoint(unittest.TestCase):
 
         eod_process.main()
 
-        mock_connect.assert_called_once_with(eod_process._DB_PATH)
+        mock_connect.assert_called_once_with(eod_process.DB_PATH)
         mock_run.assert_called_once_with(mock_conn, mock_broker_instance)
         mock_conn.close.assert_called_once()
 

@@ -28,7 +28,7 @@ class TestMorningTradeEntrypoint(unittest.TestCase):
 
         morning_trade.main()
 
-        mock_connect.assert_called_once_with(morning_trade._DB_PATH)
+        mock_connect.assert_called_once_with(morning_trade.DB_PATH)
         mock_run.assert_called_once_with(mock_conn, mock_broker_instance)
         mock_conn.close.assert_called_once()
 

@@ -9,15 +9,13 @@ from __future__ import annotations
 
 import sqlite3
 
+from config.settings import DB_PATH
 from src.batch.eod_process import run_eod_process
 from src.broker.mock_client import MockBrokerClient
 
-# TODO: config/settings.py にDBパス解決ロジックが追加されたらそちらを参照するよう変更する
-_DB_PATH = "data/app.db"
-
 
 def main() -> None:
-    conn = sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
     try:
         run_eod_process(conn, MockBrokerClient())
     finally:

@@ -13,14 +13,12 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from config.settings import DB_PATH
 from src.batch.calendar import is_trading_day
 from src.batch.snapshot_batch import run_snapshot_batch
 from src.broker.mock_client import MockBrokerClient
 
 _JST = ZoneInfo("Asia/Tokyo")
-
-# TODO: config/settings.py にDBパス解決ロジックが追加されたらそちらを参照するよう変更する
-_DB_PATH = "data/app.db"
 
 
 def _current_snapshot_time() -> str:
@@ -31,7 +29,7 @@ def main() -> None:
     if not is_trading_day():
         sys.exit(0)
 
-    conn = sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
     try:
         run_snapshot_batch(conn, MockBrokerClient(), _current_snapshot_time())
     finally:

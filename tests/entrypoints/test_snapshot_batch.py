@@ -36,7 +36,7 @@ class TestSnapshotBatchEntrypoint(unittest.TestCase):
         snapshot_batch.main()
 
         mock_datetime.now.assert_called_once_with(_JST)
-        mock_connect.assert_called_once_with(snapshot_batch._DB_PATH)
+        mock_connect.assert_called_once_with(snapshot_batch.DB_PATH)
         mock_run.assert_called_once_with(mock_conn, mock_broker_instance, "14:30")
         mock_conn.close.assert_called_once()
 

@@ -10,19 +10,17 @@ from __future__ import annotations
 import sqlite3
 import sys
 
+from config.settings import DB_PATH
 from src.batch.calendar import is_trading_day
 from src.batch.morning_trade import run_morning_batch
 from src.broker.mock_client import MockBrokerClient
-
-# TODO: config/settings.py にDBパス解決ロジックが追加されたらそちらを参照するよう変更する
-_DB_PATH = "data/app.db"
 
 
 def main() -> None:
     if not is_trading_day():
         sys.exit(0)
 
-    conn = sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
     try:
         run_morning_batch(conn, MockBrokerClient())
     finally:

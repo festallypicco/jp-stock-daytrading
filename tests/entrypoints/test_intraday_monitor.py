@@ -28,7 +28,7 @@ class TestIntradayMonitorEntrypoint(unittest.TestCase):
 
         intraday_monitor.main()
 
-        mock_connect.assert_called_once_with(intraday_monitor._DB_PATH)
+        mock_connect.assert_called_once_with(intraday_monitor.DB_PATH)
         mock_run.assert_called_once_with(mock_conn, mock_broker_instance)
         mock_conn.close.assert_called_once()
 

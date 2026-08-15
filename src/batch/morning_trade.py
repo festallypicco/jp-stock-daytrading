@@ -8,6 +8,7 @@ import time
 from datetime import datetime, time as dt_time
 from zoneinfo import ZoneInfo
 
+from config.settings import DB_PATH
 from db.initializer import send_telegram_alert, send_telegram_report
 from db.system_halt import is_system_halted, record_halt
 from src.batch.calendar import is_trading_day
@@ -19,9 +20,6 @@ from src.broker.mock_client import MockBrokerClient
 from src.orders.order_submission import submit_entry_order
 
 _JST = ZoneInfo("Asia/Tokyo")
-
-# TODO: config/settings.py にDBパス解決ロジックが追加されたらそちらを参照するよう変更する
-_DB_PATH = "data/app.db"
 
 _TOPIX_SYMBOL_CODE = "1306"
 _MARKET_OPEN_WAIT_TIME = dt_time(9, 0, 0)
@@ -193,7 +191,7 @@ def main() -> None:
     if not is_trading_day():
         sys.exit(0)
 
-    conn = sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
     try:
         run_morning_batch(conn)
     finally:

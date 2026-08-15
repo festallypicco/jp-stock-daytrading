@@ -13,15 +13,13 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from config.settings import DB_PATH
 from src.batch.calendar import is_trading_day
 from src.batch.oir import calculate_signal_scores
 from src.broker.base import BrokerClient
 from src.broker.mock_client import MockBrokerClient
 
 _JST = ZoneInfo("Asia/Tokyo")
-
-# TODO: config/settings.py にDBパス解決ロジックが追加されたらそちらを参照するよう変更する
-_DB_PATH = "data/app.db"
 
 _TARGET_SYMBOL_STATUSES = ("active", "observation")
 
@@ -113,7 +111,7 @@ def main() -> None:
     if not is_trading_day():
         sys.exit(0)
 
-    conn = sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
     try:
         broker = MockBrokerClient()
         run_snapshot_batch(conn, broker, args.snapshot_time)

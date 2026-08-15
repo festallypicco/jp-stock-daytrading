@@ -24,7 +24,7 @@ class TestWeeklyAiTuningEntrypoint(unittest.TestCase):
 
         weekly_ai_tuning.main()
 
-        mock_connect.assert_called_once_with(weekly_ai_tuning._DB_PATH)
+        mock_connect.assert_called_once_with(weekly_ai_tuning.DB_PATH)
         mock_run.assert_called_once_with(mock_conn)
         mock_conn.close.assert_called_once()
 
