@@ -20,18 +20,21 @@ _DEFAULT_TUNING_PARAMETERS = {
 
 
 def send_telegram_alert(message: str) -> None:
-    # TODO: Telegram Alertsチャンネルへの実送信を実装する
-    pass
+    from src.notifications.telegram_client import send_alert
+
+    send_alert(message)
 
 
 def send_telegram_report(message: str) -> None:
-    # TODO: Telegram Reportsチャンネルへの実送信を実装する
-    pass
+    from src.notifications.telegram_client import send_report
+
+    send_report(message)
 
 
 def send_telegram_tuning_report(message: str) -> None:
-    # TODO: Telegram（日次レポート・Alertsとは別チャンネル）への実送信を実装する
-    pass
+    from src.notifications.telegram_client import send_tuning_report
+
+    send_tuning_report(message)
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
