@@ -78,10 +78,10 @@ class TestUpdateDailyMarketDataNormalCase(_BaseMarketDataUpdateTest):
         self.assertEqual(prev_close, 105.0)
         self.assertAlmostEqual(atr14, 20.0)
         self.assertAlmostEqual(avg_volume_5d, 1300.0)
-        self.assertEqual(open_price, 105.0)
-        self.assertEqual(high, 115.0)
-        self.assertEqual(low, 95.0)
-        self.assertEqual(close, 105.0)
+        self.assertIsNone(open_price)
+        self.assertIsNone(high)
+        self.assertIsNone(low)
+        self.assertIsNone(close)
 
 
 class TestUpdateDailyMarketDataUpsert(_BaseMarketDataUpdateTest):
@@ -152,6 +152,65 @@ class TestUpdateDailyMarketDataSymbolStatusFilter(_BaseMarketDataUpdateTest):
             for row in self.conn.execute("SELECT symbol_code FROM daily_market_data").fetchall()
         }
         self.assertEqual(symbol_codes, {"7203", "1306"})
+
+
+class TestUpdateDailyMarketDataPreviousDayOhlc(_BaseMarketDataUpdateTest):
+    def _insert_market_row(self, symbol_code: str, trade_date: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO daily_market_data (
+                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
+            ) VALUES (?, ?, 90.0, 8.0, 800.0, ?)
+            """,
+            (symbol_code, trade_date, _NOW),
+        )
+        self.conn.commit()
+
+    def test_writes_latest_bar_ohlc_to_previous_trading_day_row(self) -> None:
+        self._insert_symbol("7203", "active")
+        # 2026-08-17 は月曜。前営業日は週末を跨いだ 2026-08-14（金曜）。
+        self._insert_market_row("7203", "2026-08-14")
+        bars = _make_15_bars_with_known_indicators()
+        broker = MockBrokerClient(daily_bars={"7203": bars})
+
+        update_daily_market_data(self.conn, broker, "2026-08-17")
+
+        previous_row = self.conn.execute(
+            """
+            SELECT open, high, low, close, prev_close
+            FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = '2026-08-14'
+            """
+        ).fetchone()
+        today_row = self.conn.execute(
+            """
+            SELECT open, high, low, close, prev_close
+            FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = '2026-08-17'
+            """
+        ).fetchone()
+
+        self.assertEqual(previous_row, (105.0, 115.0, 95.0, 105.0, 90.0))
+        self.assertEqual(today_row[0], None)
+        self.assertEqual(today_row[1], None)
+        self.assertEqual(today_row[2], None)
+        self.assertEqual(today_row[3], None)
+        self.assertEqual(today_row[4], 105.0)
+
+    def test_missing_previous_trading_day_row_does_not_raise(self) -> None:
+        self._insert_symbol("7203", "active")
+        bars = _make_15_bars_with_known_indicators()
+        broker = MockBrokerClient(daily_bars={"7203": bars})
+
+        update_daily_market_data(self.conn, broker, "2026-08-17")
+
+        dates = {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT trade_date FROM daily_market_data WHERE symbol_code = '7203'"
+            ).fetchall()
+        }
+        self.assertEqual(dates, {"2026-08-17"})
 
 
 if __name__ == "__main__":

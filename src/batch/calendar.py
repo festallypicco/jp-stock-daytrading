@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import jpholiday
@@ -35,3 +35,14 @@ def is_trading_day(target_date: date | None = None) -> bool:
     if jpholiday.is_holiday(target_date):
         return False
     return True
+
+
+def previous_trading_day(from_date: str | date) -> str:
+    """from_dateの前日以前で、is_trading_day()がTrueになる直近の営業日を返す。"""
+    if isinstance(from_date, str):
+        current_date = date.fromisoformat(from_date) - timedelta(days=1)
+    else:
+        current_date = from_date - timedelta(days=1)
+    while not is_trading_day(current_date):
+        current_date -= timedelta(days=1)
+    return current_date.isoformat()

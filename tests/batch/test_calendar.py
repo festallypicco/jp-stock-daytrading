@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from src.batch.calendar import is_trading_day
+from src.batch.calendar import is_trading_day, previous_trading_day
 
 
 class TestWeekdayWeekendRegression(unittest.TestCase):
@@ -43,6 +43,17 @@ class TestNationalHolidays(unittest.TestCase):
     def test_substitute_holiday_after_sunday_holiday_is_not_trading_day(self) -> None:
         self.assertFalse(is_trading_day(date(2024, 2, 11)))  # 建国記念の日（日曜日）
         self.assertFalse(is_trading_day(date(2024, 2, 12)))  # 振替休日（月曜日）
+
+
+class TestPreviousTradingDay(unittest.TestCase):
+    def test_skips_weekend_from_monday_to_friday(self) -> None:
+        self.assertEqual(previous_trading_day("2026-08-17"), "2026-08-14")
+
+    def test_returns_previous_weekday(self) -> None:
+        self.assertEqual(previous_trading_day("2026-08-11"), "2026-08-10")
+
+    def test_skips_year_end_holidays(self) -> None:
+        self.assertEqual(previous_trading_day("2026-01-05"), "2025-12-30")
 
 
 if __name__ == "__main__":
