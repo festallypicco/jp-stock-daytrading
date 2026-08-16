@@ -74,9 +74,9 @@ systemd から `docker compose exec` でコンテナ内の処理を起動する�
 ### 前提・既知の制約
 
 - `docker compose exec` はコンテナが起動済み（running）であることが前提です。
-  現時点の `docker/Dockerfile` の `CMD` はプレースホルダー（起動後即終了）の
-  ため、常駐する本番用コンテナ構成が別途必要です（本タスクの範囲外）
-- 祝日カレンダーには対応していません。`OnCalendar=Mon-Fri` は土日を除外
-  しますが祝日は除外しないため、祝日にも各バッチが起動されます。ただし
-  バッチ内部の `is_trading_day()` 判定（現状は曜日判定のみ）により空振り
-  する暫定挙動です
+  コンテナは `docker/Dockerfile` の `CMD ["sleep", "infinity"]` で常駐します
+- `OnCalendar=Mon-Fri` は土日を除外しますが祝日は除外しないため、祝日にも
+  各バッチのタイマーは発火します。バッチ内部の `is_trading_day()`
+  （曜日・年末年始・国民の祝日）により空振りします
+- `board-snapshot.timer` の4時刻は `OnCalendar` を1行ずつ書きます
+  （複数行は OR 条件でトリガーされます）

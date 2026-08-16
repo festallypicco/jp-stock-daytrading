@@ -460,13 +460,13 @@ SHADOW中は`current_value`が初期値のままなので、フォールバッ�
 
 ホスト側のsystemdから`docker compose exec`で、常駐コンテナ内の`src/entrypoints/`スクリプトを起動する。unitファイルは`docker/systemd/`。`WorkingDirectory`はデプロイ先パスのプレースホルダー（`/path/to/jp-stock-daytrading`）のため、導入時に実パスへ置換する。composeサービス名は`jp-stock-daytrading-app`。
 
-祝日カレンダー対応は未実装。`OnCalendar=Mon-Fri`は土日を除外するが祝日は除外しないため、祝日にもタイマーは発火し、バッチ内部の`is_trading_day()`（現状は曜日判定のみ）で空振りする暫定挙動。
+`OnCalendar=Mon-Fri`は土日を除外するが祝日は除外しないため、祝日にもタイマーは発火する。バッチ内部の`is_trading_day()`（曜日・年末年始・国民の祝日）で空振りする。`board-snapshot.timer`の4時刻は`OnCalendar`を1行ずつ書く（複数行はOR条件でトリガーされる）。
 
 | unit | 種別 | OnCalendar | コンテナ内コマンド |
 |---|---|---|---|
 | `morning-trade` | oneshot | Mon-Fri 08:55 Asia/Tokyo | `python -m src.entrypoints.morning_trade` |
 | `intraday-monitor` | simple（常駐） | Mon-Fri 09:05 Asia/Tokyo | `python -m src.entrypoints.intraday_monitor` |
-| `board-snapshot` | oneshot | Mon-Fri 14:00,14:30,14:45,14:55 Asia/Tokyo | `python -m src.entrypoints.snapshot_batch`（実行時JST時刻から`snapshot_time`を自己判定） |
+| `board-snapshot` | oneshot | Mon-Fri 14:00 / 14:30 / 14:45 / 14:55 Asia/Tokyo（`OnCalendar` 4行） | `python -m src.entrypoints.snapshot_batch`（実行時JST時刻から`snapshot_time`を自己判定） |
 | `eod-process` | oneshot | Mon-Fri 15:15 Asia/Tokyo | `python -m src.entrypoints.eod_process` |
 | `weekly-ai-tuning` | oneshot | Sat 10:00 Asia/Tokyo | `python -m src.entrypoints.weekly_ai_tuning` |
 
