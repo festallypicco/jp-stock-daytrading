@@ -75,8 +75,10 @@ class TestFreshnessCheckFailure(_BaseMorningTradeTest):
 
         orders_count = self.conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
         halts_count = self.conn.execute("SELECT COUNT(*) FROM system_halts").fetchone()[0]
+        sessions_count = self.conn.execute("SELECT COUNT(*) FROM morning_sessions").fetchone()[0]
         self.assertEqual(orders_count, 0)
         self.assertEqual(halts_count, 0)
+        self.assertEqual(sessions_count, 0)
 
 
 class TestSystemHaltedSkipsEntries(_BaseMorningTradeTest):
@@ -125,6 +127,58 @@ class TestSystemHaltedSkipsEntries(_BaseMorningTradeTest):
         mock_report.assert_any_call(
             "[INFO] システム停止中のため本日の新規エントリーをスキップ"
         )
+        saved = self.conn.execute(
+            "SELECT symbol_code FROM morning_sessions WHERE trade_date = ?",
+            (_today_jst_str(),),
+        ).fetchall()
+        self.assertEqual([row[0] for row in saved], [_SYMBOL_CODE])
+
+
+class TestMorningSessionPersistence(_BaseMorningTradeTest):
+    def setUp(self) -> None:
+        super().setUp()
+        today = _today_jst_str()
+        recent_trade_date = _yesterday_jst_str()
+        self.conn.execute(
+            """
+            INSERT INTO daily_market_data (
+                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
+            ) VALUES (?, ?, NULL, NULL, NULL, ?)
+            """,
+            (_SYMBOL_CODE, recent_trade_date, datetime.now(_JST).isoformat()),
+        )
+        generated_at = f"{recent_trade_date}T15:05:00+09:00"
+        self.conn.execute(
+            """
+            INSERT INTO watchlist_daily (
+                trade_date, symbol_code, rank, oir_eval_score, generated_at
+            ) VALUES (?, ?, 1, 0.9, ?)
+            """,
+            (today, _SYMBOL_CODE, generated_at),
+        )
+        self.conn.commit()
+
+    @patch("src.batch.morning_trade.save_morning_sessions", side_effect=RuntimeError("db down"))
+    @patch("src.batch.vwap_tracker.time.sleep")
+    @patch("src.batch.morning_trade.time.sleep")
+    @patch("src.batch.morning_trade.submit_entry_order")
+    @patch("src.batch.morning_trade.decide_entries", return_value=[])
+    @patch("src.batch.morning_trade.send_telegram_report")
+    def test_save_failure_does_not_stop_order_flow(
+        self,
+        mock_report,
+        mock_decide_entries,
+        mock_submit_entry_order,
+        mock_sleep,
+        mock_vwap_sleep,
+        mock_save,
+    ) -> None:
+        run_morning_batch(self.conn, broker=MockBrokerClient())
+
+        mock_decide_entries.assert_called_once()
+        mock_submit_entry_order.assert_not_called()
+        mock_report.assert_any_call("[INFO] 朝の発注処理完了")
+        mock_save.assert_called_once()
 
 
 if __name__ == "__main__":

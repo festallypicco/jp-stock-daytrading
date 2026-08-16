@@ -95,18 +95,22 @@ class TestRunWalkForwardPersistsResults(unittest.TestCase):
             },
             market_data={
                 ("7203", "2026-01-10"): MarketDataRow(
-                    "7203", "2026-01-10", 1000.0, 10.0, 10000.0
+                    "7203",
+                    "2026-01-10",
+                    1000.0,
+                    10.0,
+                    10000.0,
+                    990.0,
+                    1020.0,
+                    1000.0,
+                    1010.0,
                 ),
             },
             session_snapshots={
                 ("7203", "2026-01-10"): SessionSnapshot(
-                    opening_price=990.0,
                     last_price=1005.0,
                     vwap=995.0,
                     total_volume_delta=1500,
-                    high=1020.0,
-                    low=1000.0,
-                    close=1010.0,
                 ),
             },
         )

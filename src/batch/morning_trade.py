@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import sys
 import time
@@ -13,6 +14,7 @@ from db.initializer import send_telegram_alert, send_telegram_report
 from db.system_halt import is_system_halted, record_halt
 from src.batch.calendar import is_trading_day
 from src.batch.entry_selection import decide_entries
+from src.batch.morning_session import save_morning_sessions
 from src.batch.topix_proxy import classify_topix_change, fetch_topix_price_with_retry
 from src.batch.vwap_tracker import track_vwap
 from src.broker.base import BrokerClient
@@ -25,6 +27,8 @@ _TOPIX_SYMBOL_CODE = "1306"
 _MARKET_OPEN_WAIT_TIME = dt_time(9, 0, 0)
 _WATCHLIST_FRESHNESS_CUTOFF = dt_time(15, 0)
 _WATCHLIST_LIMIT = 10
+
+logger = logging.getLogger(__name__)
 
 
 def _now_jst() -> datetime:
@@ -170,21 +174,27 @@ def run_morning_batch(conn: sqlite3.Connection, broker: BrokerClient | None = No
 
     lot_multiplier = lot_multiplier_holder.get("value", 0.0)
 
-    if is_system_halted(conn):
-        send_telegram_report("[INFO] システム停止中のため本日の新規エントリーをスキップ")
-        return
-
-    decisions = decide_entries(conn, watchlist, lot_multiplier, vwap_results, broker, today)
-    for decision in decisions:
-        submit_entry_order(
-            conn,
-            broker,
-            decision.order_request,
-            decision.oir_rank_bucket,
-            decision.gap_rate_bucket,
-        )
-
-    send_telegram_report("[INFO] 朝の発注処理完了")
+    try:
+        if is_system_halted(conn):
+            send_telegram_report("[INFO] システム停止中のため本日の新規エントリーをスキップ")
+        else:
+            decisions = decide_entries(
+                conn, watchlist, lot_multiplier, vwap_results, broker, today
+            )
+            for decision in decisions:
+                submit_entry_order(
+                    conn,
+                    broker,
+                    decision.order_request,
+                    decision.oir_rank_bucket,
+                    decision.gap_rate_bucket,
+                )
+            send_telegram_report("[INFO] 朝の発注処理完了")
+    finally:
+        try:
+            save_morning_sessions(conn, today, symbol_codes, vwap_results)
+        except Exception:
+            logger.exception("MORNING_SESSION_SAVE_FAILED")
 
 
 def main() -> None:

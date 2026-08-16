@@ -52,18 +52,38 @@ def update_daily_market_data(
 
         atr14 = calculate_atr14(bars)
         avg_volume_5d = calculate_avg_volume_5d(bars)
-        prev_close = bars[-1].close
+        latest_bar = bars[-1]
+        prev_close = latest_bar.close
 
+        # TODO: 立花証券口座開設後、get_daily_bars()で過去数年分の日足を
+        # 遡って取得できるか確認すること。取得可能であれば、この自前保存
+        # ロジック（open/high/low/closeカラムへの保存）の撤去を検討する。
         conn.execute(
             """
             INSERT INTO daily_market_data (
-                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                symbol_code, trade_date, prev_close, atr14, avg_volume_5d,
+                open, high, low, close, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(symbol_code, trade_date) DO UPDATE SET
                 prev_close = excluded.prev_close,
                 atr14 = excluded.atr14,
-                avg_volume_5d = excluded.avg_volume_5d
+                avg_volume_5d = excluded.avg_volume_5d,
+                open = excluded.open,
+                high = excluded.high,
+                low = excluded.low,
+                close = excluded.close
             """,
-            (symbol_code, trade_date, prev_close, atr14, avg_volume_5d, _now_jst_iso()),
+            (
+                symbol_code,
+                trade_date,
+                prev_close,
+                atr14,
+                avg_volume_5d,
+                latest_bar.open,
+                latest_bar.high,
+                latest_bar.low,
+                latest_bar.close,
+                _now_jst_iso(),
+            ),
         )
         conn.commit()

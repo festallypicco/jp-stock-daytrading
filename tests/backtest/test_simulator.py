@@ -20,6 +20,7 @@ def _period_with_session(
     last_price: float = 1005.0,
     vwap: float = 995.0,
     volume: int = 1500,
+    open_price: float = 990.0,
     high: float = 1020.0,
     low: float = 1000.0,
     close: float = 1010.0,
@@ -33,18 +34,22 @@ def _period_with_session(
         },
         market_data={
             ("7203", "2026-01-10"): MarketDataRow(
-                "7203", "2026-01-10", 1000.0, atr14, 10000.0
+                "7203",
+                "2026-01-10",
+                1000.0,
+                atr14,
+                10000.0,
+                open_price,
+                high,
+                low,
+                close,
             ),
         },
         session_snapshots={
             ("7203", "2026-01-10"): SessionSnapshot(
-                opening_price=990.0,
                 last_price=last_price,
                 vwap=vwap,
                 total_volume_delta=volume,
-                high=high,
-                low=low,
-                close=close,
             ),
         },
     )
@@ -81,6 +86,13 @@ class TestSimulate(unittest.TestCase):
 
     def test_skips_when_entry_conditions_fail(self) -> None:
         self.assertEqual(simulate(_period_with_session(vwap=1010.0)), [])
+
+    def test_skips_when_daily_ohlc_missing(self) -> None:
+        period = _period_with_session()
+        period.market_data[("7203", "2026-01-10")] = MarketDataRow(
+            "7203", "2026-01-10", 1000.0, 10.0, 10000.0
+        )
+        self.assertEqual(simulate(period), [])
 
 
 if __name__ == "__main__":

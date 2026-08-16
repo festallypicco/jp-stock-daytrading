@@ -114,5 +114,74 @@ class TestMigrateTuningParametersModeColumn(unittest.TestCase):
         self.assertEqual(sell_row, (-0.2, "SHADOW"))
 
 
+class TestMigrateDailyMarketDataOhlcColumns(unittest.TestCase):
+    def setUp(self) -> None:
+        fd, self.db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+
+    def tearDown(self) -> None:
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
+    def test_existing_db_without_ohlc_columns_is_migrated_non_destructively(self) -> None:
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            """
+            CREATE TABLE daily_market_data (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol_code     TEXT NOT NULL,
+                trade_date      TEXT NOT NULL,
+                prev_close      REAL,
+                atr14           REAL,
+                avg_volume_5d   REAL,
+                created_at      TEXT NOT NULL,
+                UNIQUE (symbol_code, trade_date)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO daily_market_data (
+                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
+            ) VALUES ('7203', '2026-01-10', 1000.0, 10.0, 10000.0, '2026-01-10T15:15:00+09:00')
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        init_db(self.db_path)
+
+        conn = sqlite3.connect(self.db_path)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(daily_market_data)").fetchall()}
+        row = conn.execute(
+            """
+            SELECT symbol_code, prev_close, atr14, avg_volume_5d, open, high, low, close
+            FROM daily_market_data
+            """
+        ).fetchone()
+        tables = {
+            table_row[0]
+            for table_row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        conn.close()
+
+        self.assertTrue({"open", "high", "low", "close"}.issubset(columns))
+        self.assertEqual(row[:4], ("7203", 1000.0, 10.0, 10000.0))
+        self.assertEqual(row[4:], (None, None, None, None))
+        self.assertIn("morning_sessions", tables)
+
+    def test_ohlc_migration_is_idempotent(self) -> None:
+        init_db(self.db_path)
+        init_db(self.db_path)
+
+        conn = sqlite3.connect(self.db_path)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(daily_market_data)").fetchall()}
+        conn.close()
+
+        self.assertTrue({"open", "high", "low", "close"}.issubset(columns))
+
+
 if __name__ == "__main__":
     unittest.main()

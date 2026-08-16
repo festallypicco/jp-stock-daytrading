@@ -43,8 +43,17 @@ class TestLoadPeriod(unittest.TestCase):
         self.conn.execute(
             """
             INSERT INTO daily_market_data (
-                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
-            ) VALUES ('7203', '2026-01-10', 1000.0, 10.0, 10000.0, ?)
+                symbol_code, trade_date, prev_close, atr14, avg_volume_5d,
+                open, high, low, close, created_at
+            ) VALUES ('7203', '2026-01-10', 1000.0, 10.0, 10000.0, 990.0, 1020.0, 980.0, 1010.0, ?)
+            """,
+            (_NOW,),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO morning_sessions (
+                trade_date, symbol_code, last_price, vwap, total_volume_delta, created_at
+            ) VALUES ('2026-01-10', '7203', 1005.0, 995.0, 1500, ?)
             """,
             (_NOW,),
         )
@@ -78,6 +87,15 @@ class TestLoadPeriod(unittest.TestCase):
         self.assertEqual(len(period.watchlists["2026-01-10"]), 1)
         self.assertEqual(period.watchlists["2026-01-10"][0].symbol_code, "7203")
         self.assertIn(("7203", "2026-01-10"), period.market_data)
+        market = period.market_data[("7203", "2026-01-10")]
+        self.assertEqual(market.open, 990.0)
+        self.assertEqual(market.high, 1020.0)
+        self.assertEqual(market.low, 980.0)
+        self.assertEqual(market.close, 1010.0)
+        session = period.session_snapshots[("7203", "2026-01-10")]
+        self.assertEqual(session.last_price, 1005.0)
+        self.assertEqual(session.vwap, 995.0)
+        self.assertEqual(session.total_volume_delta, 1500)
         self.assertEqual(len(period.signal_scores), 1)
         self.assertEqual(len(period.board_snapshots), 1)
 
@@ -86,9 +104,34 @@ class TestLoadPeriod(unittest.TestCase):
         self.assertEqual(period.signal_scores, [])
         self.assertEqual(period.board_snapshots, [])
         self.assertIn("2026-01-10", period.watchlists)
+        self.assertIn(("7203", "2026-01-10"), period.session_snapshots)
 
     def test_detect_available_range(self) -> None:
         self.assertEqual(detect_available_range(self.conn), ("2026-01-10", "2026-01-10"))
+
+    def test_skips_incomplete_morning_sessions(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO symbols (
+                code, name, status, is_dynamically_excluded,
+                dynamic_exclusion_reason, status_updated_at, added_at
+            ) VALUES ('6758', 'ソニー', 'active', 0, NULL, ?, ?)
+            """,
+            (_NOW, _NOW),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO morning_sessions (
+                trade_date, symbol_code, last_price, vwap, total_volume_delta, created_at
+            ) VALUES ('2026-01-10', '6758', NULL, NULL, NULL, ?)
+            """,
+            (_NOW,),
+        )
+        self.conn.commit()
+
+        period = load_period(self.conn, "2026-01-10", "2026-01-10")
+        self.assertNotIn(("6758", "2026-01-10"), period.session_snapshots)
+        self.assertIn(("7203", "2026-01-10"), period.session_snapshots)
 
 
 if __name__ == "__main__":

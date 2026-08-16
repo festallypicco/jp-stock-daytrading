@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS daily_market_data (
     prev_close      REAL,
     atr14           REAL,
     avg_volume_5d   REAL,
+    open            REAL,
+    high            REAL,
+    low             REAL,
+    close           REAL,
     created_at      TEXT NOT NULL,
     UNIQUE (symbol_code, trade_date)
 );
@@ -170,6 +174,17 @@ CREATE TABLE IF NOT EXISTS tuning_history (
     mode                              TEXT NOT NULL CHECK (mode IN ('SHADOW', 'LIVE')),
     reason                             TEXT,
     created_at                         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS morning_sessions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    trade_date          TEXT NOT NULL,
+    symbol_code         TEXT NOT NULL REFERENCES symbols(code),
+    last_price          REAL,
+    vwap                REAL,
+    total_volume_delta  INTEGER,
+    created_at          TEXT NOT NULL,
+    UNIQUE (symbol_code, trade_date)
 );
 
 CREATE TABLE IF NOT EXISTS walk_forward_results (

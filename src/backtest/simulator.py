@@ -50,7 +50,7 @@ def simulate(
 ) -> list[SimulatedTrade]:
     """期間内の各営業日について、監視リスト順にエントリー判定し、日足レンジで決済する。
 
-    朝セッション（VWAP等）やATRが欠けている銘柄はスキップする。
+    朝セッション（VWAP等）や日足OHLC・ATRが欠けている銘柄はスキップする。
     同一日の同時保有は max_slots 件まで。
     """
     if lot_multiplier <= 0:
@@ -74,13 +74,17 @@ def simulate(
                 or market.avg_volume_5d is None
                 or market.avg_volume_5d <= 0
                 or market.atr14 is None
+                or market.open is None
+                or market.high is None
+                or market.low is None
+                or market.close is None
             ):
                 continue
 
             check_result = check_entry_conditions(
                 last_price=session.last_price,
                 vwap=session.vwap,
-                opening_price=session.opening_price,
+                opening_price=market.open,
                 prev_close=market.prev_close,
                 total_volume_delta=session.total_volume_delta,
                 avg_volume_5d=market.avg_volume_5d,
@@ -93,9 +97,9 @@ def simulate(
             exit_price, exit_reason = _resolve_exit(
                 check_result.entry_price,
                 market.atr14,
-                session.high,
-                session.low,
-                session.close,
+                market.high,
+                market.low,
+                market.close,
             )
             pnl = (exit_price - check_result.entry_price) * check_result.qty
             day_trades.append(

@@ -83,6 +83,14 @@ def _migrate_fee_columns(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_daily_market_data_ohlc_columns(conn: sqlite3.Connection) -> None:
+    """既存DBのdaily_market_dataに日足OHLC列を非破壊的に追従させる（対象列が無い場合のみ実行）。"""
+    columns = _table_columns(conn, "daily_market_data")
+    for column_name in ("open", "high", "low", "close"):
+        if column_name not in columns:
+            conn.execute(f"ALTER TABLE daily_market_data ADD COLUMN {column_name} REAL")
+
+
 def _migrate_tuning_parameters_mode_column(conn: sqlite3.Connection) -> None:
     """既存DBのtuning_parametersにmode列を非破壊的に追従させる（対象列が無い場合のみ実行）。"""
     tuning_parameters_columns = _table_columns(conn, "tuning_parameters")
@@ -133,6 +141,7 @@ def init_db(db_path: str) -> None:
     try:
         conn.executescript(schema_sql)
         _migrate_fee_columns(conn)
+        _migrate_daily_market_data_ohlc_columns(conn)
         _migrate_tuning_parameters_mode_column(conn)
         _seed_default_tuning_parameters(conn)
         conn.commit()

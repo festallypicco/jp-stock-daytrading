@@ -21,19 +21,19 @@ class MarketDataRow:
     prev_close: float | None
     atr14: float | None
     avg_volume_5d: float | None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
 
 
 @dataclass(frozen=True)
 class SessionSnapshot:
-    """朝セッション相当の入力。DBに保存されていないため、呼び出し側で注入する。"""
+    """morning_sessions 由来の朝セッション入力（9:04:45時点）。"""
 
-    opening_price: float
     last_price: float
     vwap: float
     total_volume_delta: int
-    high: float
-    low: float
-    close: float
 
 
 @dataclass
@@ -80,7 +80,7 @@ class PeriodData:
 
 
 def load_period(conn: sqlite3.Connection, start_date: str, end_date: str) -> PeriodData:
-    """watchlist_daily / daily_market_data / signal_scores / board_snapshots を期間抽出する。"""
+    """watchlist_daily / daily_market_data / morning_sessions / signal_scores / board_snapshots を期間抽出する。"""
     watchlist_rows = conn.execute(
         """
         SELECT trade_date, symbol_code, rank, oir_eval_score
@@ -98,7 +98,8 @@ def load_period(conn: sqlite3.Connection, start_date: str, end_date: str) -> Per
 
     market_rows = conn.execute(
         """
-        SELECT symbol_code, trade_date, prev_close, atr14, avg_volume_5d
+        SELECT symbol_code, trade_date, prev_close, atr14, avg_volume_5d,
+               "open", high, low, close
         FROM daily_market_data
         WHERE trade_date >= ? AND trade_date <= ?
         """,
@@ -106,10 +107,46 @@ def load_period(conn: sqlite3.Connection, start_date: str, end_date: str) -> Per
     ).fetchall()
     market_data = {
         (symbol_code, trade_date): MarketDataRow(
-            symbol_code, trade_date, prev_close, atr14, avg_volume_5d
+            symbol_code,
+            trade_date,
+            prev_close,
+            atr14,
+            avg_volume_5d,
+            open_price,
+            high,
+            low,
+            close,
         )
-        for symbol_code, trade_date, prev_close, atr14, avg_volume_5d in market_rows
+        for (
+            symbol_code,
+            trade_date,
+            prev_close,
+            atr14,
+            avg_volume_5d,
+            open_price,
+            high,
+            low,
+            close,
+        ) in market_rows
     }
+
+    session_rows = conn.execute(
+        """
+        SELECT symbol_code, trade_date, last_price, vwap, total_volume_delta
+        FROM morning_sessions
+        WHERE trade_date >= ? AND trade_date <= ?
+        """,
+        (start_date, end_date),
+    ).fetchall()
+    session_snapshots: dict[tuple[str, str], SessionSnapshot] = {}
+    for symbol_code, trade_date, last_price, vwap, total_volume_delta in session_rows:
+        if last_price is None or vwap is None or total_volume_delta is None:
+            continue
+        session_snapshots[(symbol_code, trade_date)] = SessionSnapshot(
+            last_price=last_price,
+            vwap=vwap,
+            total_volume_delta=total_volume_delta,
+        )
 
     signal_scores = conn.execute(
         """
@@ -138,6 +175,7 @@ def load_period(conn: sqlite3.Connection, start_date: str, end_date: str) -> Per
         market_data=market_data,
         signal_scores=list(signal_scores),
         board_snapshots=list(board_snapshots),
+        session_snapshots=session_snapshots,
     )
 
 

@@ -67,17 +67,21 @@ class TestUpdateDailyMarketDataNormalCase(_BaseMarketDataUpdateTest):
 
         row = self.conn.execute(
             """
-            SELECT prev_close, atr14, avg_volume_5d
+            SELECT prev_close, atr14, avg_volume_5d, open, high, low, close
             FROM daily_market_data
             WHERE symbol_code = '7203' AND trade_date = ?
             """,
             (_TRADE_DATE,),
         ).fetchone()
         self.assertIsNotNone(row)
-        prev_close, atr14, avg_volume_5d = row
+        prev_close, atr14, avg_volume_5d, open_price, high, low, close = row
         self.assertEqual(prev_close, 105.0)
         self.assertAlmostEqual(atr14, 20.0)
         self.assertAlmostEqual(avg_volume_5d, 1300.0)
+        self.assertEqual(open_price, 105.0)
+        self.assertEqual(high, 115.0)
+        self.assertEqual(low, 95.0)
+        self.assertEqual(close, 105.0)
 
 
 class TestUpdateDailyMarketDataUpsert(_BaseMarketDataUpdateTest):
