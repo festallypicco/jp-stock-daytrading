@@ -2,11 +2,10 @@
 Description=Run board-snapshot at 14:00/14:30/14:45/14:55 on trading days
 
 [Timer]
-# 1つのtimerファイルに4時刻を列挙する形式。どの時刻の発火かは
-# src/entrypoints/snapshot_batch.py側で実行時のJST時刻から自己判定する。
-# 祝日カレンダー対応は別タスクの範囲外。OnCalendar=Mon-Friは土日を除外するが
-# 祝日は除外しないため、祝日も起動されバッチ内部のis_trading_day()判定
-# （現状は曜日判定のみ）で空振りする、意図的な暫定挙動。
+# OnCalendarは時刻ごとに1行ずつ書く（複数行はOR条件でトリガーされる）。
+# どの時刻の発火かは src/entrypoints/snapshot_batch.py 側で実行時のJST時刻から自己判定する。
+# OnCalendar=Mon-Friは土日を除外するが祝日は除外しないため、祝日もタイマーは発火する。
+# バッチ内部のis_trading_day()（曜日・年末年始・国民の祝日）で空振りする。
 OnCalendar=Mon-Fri 14:00:00 Asia/Tokyo
 OnCalendar=Mon-Fri 14:30:00 Asia/Tokyo
 OnCalendar=Mon-Fri 14:45:00 Asia/Tokyo

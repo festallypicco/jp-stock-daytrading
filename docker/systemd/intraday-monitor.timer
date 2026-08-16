@@ -2,10 +2,8 @@
 Description=Start intraday-monitor daily on trading days
 
 [Timer]
-# 祝日カレンダー対応は別タスクの範囲外。OnCalendar=Mon-Friは土日を除外するが
-# 祝日は除外しないため、祝日も起動される（intraday-monitor自体には
-# is_trading_day()判定が無いため、9:05〜14:30の間ループし続け、
-# OPENポジションが無いまま空振りする、意図的な暫定挙動）。
+# OnCalendar=Mon-Friは土日を除外するが祝日は除外しないため、祝日もタイマーは発火する。
+# エントリーポイント側のis_trading_day()（曜日・年末年始・国民の祝日）で即時終了する。
 OnCalendar=Mon-Fri 09:05:00 Asia/Tokyo
 Persistent=false
 

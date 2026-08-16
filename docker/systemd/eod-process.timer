@@ -2,9 +2,8 @@
 Description=Run eod-process daily on trading days
 
 [Timer]
-# 祝日カレンダー対応は別タスクの範囲外。OnCalendar=Mon-Friは土日を除外するが
-# 祝日は除外しないため、祝日も起動されrun_eod_process内部のis_trading_day()
-# 判定（現状は曜日判定のみ）で空振りする、意図的な暫定挙動。
+# OnCalendar=Mon-Friは土日を除外するが祝日は除外しないため、祝日もタイマーは発火する。
+# run_eod_process内部のis_trading_day()（曜日・年末年始・国民の祝日）で空振りする。
 OnCalendar=Mon-Fri 15:15:00 Asia/Tokyo
 Persistent=false
 
