@@ -6,16 +6,14 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 
-from src.batch.feature_buckets import calculate_gap_rate_bucket, calculate_oir_rank_bucket
 from src.batch.vwap_tracker import VwapResult
 from src.broker.base import BrokerClient
 from src.broker.types import OrderRequest
-from src.utils.tick_size import round_price
+from src.logic.entry_rules import check_entry_conditions
 
 # 資金配分の分母（口座残高をこの口数分で均等分割する固定値）。
 # max_slots引数とは独立した定数として指示された通りに固定する。
 _ALLOCATION_SLOT_COUNT = 5
-_MIN_VOLUME_RATIO = 0.10
 
 logger = logging.getLogger(__name__)
 
@@ -100,29 +98,24 @@ def decide_entries(
 
         prev_close, avg_volume_5d = market_data_row
 
-        if vwap_result.total_volume_delta < avg_volume_5d * _MIN_VOLUME_RATIO:
-            continue
-
-        if vwap_result.last_price <= vwap_result.vwap:
-            continue
-
-        gap_rate = (vwap_result.opening_price - prev_close) / prev_close
-
-        oir_rank_bucket = calculate_oir_rank_bucket(rank)
-        gap_rate_bucket = calculate_gap_rate_bucket(gap_rate)
-
-        entry_price = float(round_price(vwap_result.last_price, mode="NEAREST"))
-
-        lots = allocation_per_slot // (entry_price * 100)
-        qty = int(lots) * 100
-
-        if qty <= 0:
-            logger.warning(
-                "INSUFFICIENT_FUNDS: symbol_code=%s required=%s allocated=%s",
-                symbol_code,
-                entry_price * 100,
-                allocation_per_slot,
-            )
+        check_result = check_entry_conditions(
+            last_price=vwap_result.last_price,
+            vwap=vwap_result.vwap,
+            opening_price=vwap_result.opening_price,
+            prev_close=prev_close,
+            total_volume_delta=vwap_result.total_volume_delta,
+            avg_volume_5d=avg_volume_5d,
+            rank=rank,
+            allocation_per_slot=allocation_per_slot,
+        )
+        if not check_result.accepted:
+            if check_result.reject_reason == "insufficient_funds":
+                logger.warning(
+                    "INSUFFICIENT_FUNDS: symbol_code=%s required=%s allocated=%s",
+                    symbol_code,
+                    check_result.entry_price * 100,
+                    allocation_per_slot,
+                )
             continue
 
         order_request = OrderRequest(
@@ -131,14 +124,14 @@ def decide_entries(
             position_type="SPOT",
             order_role="ENTRY",
             order_type="LIMIT",
-            qty=qty,
-            price=entry_price,
+            qty=check_result.qty,
+            price=check_result.entry_price,
         )
         candidates.append(
             EntryDecision(
                 order_request=order_request,
-                oir_rank_bucket=oir_rank_bucket.value,
-                gap_rate_bucket=gap_rate_bucket.value,
+                oir_rank_bucket=check_result.oir_rank_bucket,
+                gap_rate_bucket=check_result.gap_rate_bucket,
             )
         )
 

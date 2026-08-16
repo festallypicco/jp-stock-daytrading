@@ -13,11 +13,10 @@ from zoneinfo import ZoneInfo
 from src.broker.base import BrokerClient
 from src.broker.types import OrderRequest
 from src.common.ids import uuid7
+from src.logic.exit_rules import calculate_tp_sl
 from src.utils.tick_size import round_price
 
 _JST = ZoneInfo("Asia/Tokyo")
-
-_TP_ATR_MULTIPLIER = 1.5
 
 
 def _now_jst() -> str:
@@ -118,10 +117,9 @@ def place_tp_order(
         return None
 
     atr14 = atr_row[0]
+    levels = calculate_tp_sl(entry_price, atr14)
 
-    tp_price = float(
-        round_price(entry_price + atr14 * _TP_ATR_MULTIPLIER, "INWARD", entry_price)
-    )
+    tp_price = float(round_price(levels.tp_price, "INWARD", entry_price))
 
     tp_request = OrderRequest(
         symbol_code=symbol_code,

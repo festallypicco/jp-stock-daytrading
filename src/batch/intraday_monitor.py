@@ -16,14 +16,12 @@ from zoneinfo import ZoneInfo
 from db.initializer import send_telegram_alert
 from src.broker.base import BrokerClient
 from src.broker.types import OrderRequest
+from src.logic.exit_rules import calculate_tp_sl
 from src.orders.lifecycle import apply_fill
 from src.orders.oco import place_tp_order
 from src.orders.order_submission import ExitOrderHeld, submit_exit_order
 
 _JST = ZoneInfo("Asia/Tokyo")
-
-_BREAKEVEN_ATR_MULTIPLIER = 0.75
-_SL_ATR_MULTIPLIER = 1.0
 
 
 def _today_jst() -> str:
@@ -103,9 +101,10 @@ def _check_stop_loss(
     atr14 = atr_row[0]
 
     current_price = broker.get_quote(symbol_code)
+    levels = calculate_tp_sl(entry_price, atr14)
 
     if (
-        current_price >= entry_price + atr14 * _BREAKEVEN_ATR_MULTIPLIER
+        current_price >= levels.breakeven_threshold
         and not position_row["sl_breakeven_activated"]
     ):
         conn.execute(
@@ -118,7 +117,7 @@ def _check_stop_loss(
     effective_sl_price = (
         entry_price
         if position_row["sl_breakeven_activated"]
-        else entry_price - atr14 * _SL_ATR_MULTIPLIER
+        else levels.sl_price
     )
 
     if current_price > effective_sl_price:
