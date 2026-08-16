@@ -134,7 +134,7 @@ def _render_account_summary(summary: AccountSummary) -> None:
         st.caption("累計損益")
         st.markdown(_yen_markdown(summary.cumulative_pnl))
     with columns[2]:
-        st.caption("当日損益")
+        st.caption("直近営業日損益")
         st.markdown(_yen_markdown(summary.daily_pnl))
 
 
@@ -151,7 +151,7 @@ def _render_trade_history(trades: list[TradeHistoryRow]) -> None:
                 "entry_price": row.entry_price,
                 "exit_price": row.exit_price,
                 "qty": row.qty,
-                "pnl": row.pnl,
+                "粗損益（手数料差引前）": row.pnl,
                 "決済理由": row.exit_reason,
             }
             for row in trades
