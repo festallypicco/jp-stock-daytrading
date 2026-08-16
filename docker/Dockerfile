@@ -23,6 +23,7 @@ COPY --from=builder /install /usr/local
 COPY --chown=appuser:appuser src/ /app/src/
 COPY --chown=appuser:appuser db/ /app/db/
 COPY --chown=appuser:appuser config/ /app/config/
+COPY --chown=appuser:appuser scripts/ /app/scripts/
 
 USER appuser
 
