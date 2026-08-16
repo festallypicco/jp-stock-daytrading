@@ -13,6 +13,8 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
+ENV PYTHONPATH=/app
+
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin appuser \
     && chown appuser:appuser /app
 
