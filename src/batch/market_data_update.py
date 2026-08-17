@@ -74,17 +74,23 @@ def update_daily_market_data(
         )
         conn.execute(
             """
-            UPDATE daily_market_data
-            SET open = ?, high = ?, low = ?, close = ?
-            WHERE symbol_code = ? AND trade_date = ?
+            INSERT INTO daily_market_data (
+                symbol_code, trade_date, open, high, low, close, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol_code, trade_date) DO UPDATE SET
+                open = excluded.open,
+                high = excluded.high,
+                low = excluded.low,
+                close = excluded.close
             """,
             (
+                symbol_code,
+                prev_trade_date,
                 latest_bar.open,
                 latest_bar.high,
                 latest_bar.low,
                 latest_bar.close,
-                symbol_code,
-                prev_trade_date,
+                _now_jst_iso(),
             ),
         )
         conn.commit()

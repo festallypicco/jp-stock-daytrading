@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 from src.batch.calendar import is_trading_day, previous_trading_day
 
@@ -54,6 +55,11 @@ class TestPreviousTradingDay(unittest.TestCase):
 
     def test_skips_year_end_holidays(self) -> None:
         self.assertEqual(previous_trading_day("2026-01-05"), "2025-12-30")
+
+    def test_raises_when_lookback_exceeds_limit(self) -> None:
+        with patch("src.batch.calendar.is_trading_day", return_value=False):
+            with self.assertRaises(ValueError):
+                previous_trading_day("2026-08-17")
 
 
 if __name__ == "__main__":

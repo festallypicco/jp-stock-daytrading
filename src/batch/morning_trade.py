@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from config.settings import DB_PATH
 from db.initializer import send_telegram_alert, send_telegram_report
 from db.system_halt import is_system_halted, record_halt
-from src.batch.calendar import is_trading_day
+from src.batch.calendar import is_trading_day, previous_trading_day
 from src.batch.entry_selection import decide_entries
 from src.batch.morning_session import save_morning_sessions
 from src.batch.topix_proxy import classify_topix_change, fetch_topix_price_with_retry
@@ -54,15 +54,11 @@ def _wait_until_market_open() -> None:
 
 
 def _check_watchlist_freshness(conn: sqlite3.Connection, today: str) -> bool:
-    """直近営業日データと監視リストの鮮度を確認する。問題が無ければTrueを返す。"""
-    recent_row = conn.execute(
-        "SELECT MAX(trade_date) FROM daily_market_data WHERE trade_date < ?",
-        (today,),
-    ).fetchone()
-    recent_trade_date = recent_row[0] if recent_row else None
-    if recent_trade_date is None:
-        send_telegram_alert("[WARNING] 直近営業日が特定できないため本日休業")
-        return False
+    """監視リストの鮮度を確認する。問題が無ければTrueを返す。
+
+    直近営業日は daily_market_data ではなくカレンダー計算（previous_trading_day）で求める。
+    """
+    recent_trade_date = previous_trading_day(today)
 
     # 同一trade_dateの監視リストは1バッチで一括生成される想定のため、先頭1件のみ確認する
     watchlist_row = conn.execute(

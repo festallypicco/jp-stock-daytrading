@@ -11,6 +11,7 @@ _JST = ZoneInfo("Asia/Tokyo")
 
 # 西暦に関わらず毎年固定の市場休場日（月, 日）。年ごとの更新は不要。
 _YEAR_END_CLOSED_MD = ((12, 31), (1, 1), (1, 2), (1, 3))
+_MAX_PREVIOUS_LOOKBACK_DAYS = 10
 
 
 def is_trading_day(target_date: date | None = None) -> bool:
@@ -38,11 +39,20 @@ def is_trading_day(target_date: date | None = None) -> bool:
 
 
 def previous_trading_day(from_date: str | date) -> str:
-    """from_dateの前日以前で、is_trading_day()がTrueになる直近の営業日を返す。"""
+    """from_dateの前日以前で、is_trading_day()がTrueになる直近の営業日を返す。
+
+    DBは参照せず、土日・祝日・年末年始のカレンダー計算のみで判定する。
+    遡り回数が _MAX_PREVIOUS_LOOKBACK_DAYS を超えた場合は ValueError。
+    """
     if isinstance(from_date, str):
         current_date = date.fromisoformat(from_date) - timedelta(days=1)
     else:
         current_date = from_date - timedelta(days=1)
-    while not is_trading_day(current_date):
+    for _ in range(_MAX_PREVIOUS_LOOKBACK_DAYS):
+        if is_trading_day(current_date):
+            return current_date.isoformat()
         current_date -= timedelta(days=1)
-    return current_date.isoformat()
+    raise ValueError(
+        f"previous trading day not found within {_MAX_PREVIOUS_LOOKBACK_DAYS} days "
+        f"before {from_date}"
+    )

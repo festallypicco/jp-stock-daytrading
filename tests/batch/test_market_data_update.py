@@ -100,7 +100,11 @@ class TestUpdateDailyMarketDataUpsert(_BaseMarketDataUpdateTest):
         update_daily_market_data(self.conn, broker, _TRADE_DATE)
 
         rows = self.conn.execute(
-            "SELECT prev_close, atr14 FROM daily_market_data WHERE symbol_code = '7203'"
+            """
+            SELECT prev_close, atr14 FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = ?
+            """,
+            (_TRADE_DATE,),
         ).fetchall()
         self.assertEqual(len(rows), 1)
         prev_close, atr14 = rows[0]
@@ -197,7 +201,7 @@ class TestUpdateDailyMarketDataPreviousDayOhlc(_BaseMarketDataUpdateTest):
         self.assertEqual(today_row[3], None)
         self.assertEqual(today_row[4], 105.0)
 
-    def test_missing_previous_trading_day_row_does_not_raise(self) -> None:
+    def test_missing_previous_trading_day_row_is_inserted(self) -> None:
         self._insert_symbol("7203", "active")
         bars = _make_15_bars_with_known_indicators()
         broker = MockBrokerClient(daily_bars={"7203": bars})
@@ -210,7 +214,15 @@ class TestUpdateDailyMarketDataPreviousDayOhlc(_BaseMarketDataUpdateTest):
                 "SELECT trade_date FROM daily_market_data WHERE symbol_code = '7203'"
             ).fetchall()
         }
-        self.assertEqual(dates, {"2026-08-17"})
+        self.assertEqual(dates, {"2026-08-14", "2026-08-17"})
+        previous_ohlc = self.conn.execute(
+            """
+            SELECT open, high, low, close
+            FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = '2026-08-14'
+            """
+        ).fetchone()
+        self.assertEqual(previous_ohlc, (105.0, 115.0, 95.0, 105.0))
 
 
 if __name__ == "__main__":

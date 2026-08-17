@@ -6,22 +6,19 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from db.initializer import init_db
 from db.system_halt import record_halt
+from src.batch.calendar import previous_trading_day
 from src.batch.morning_trade import _today_jst_str, run_morning_batch
 from src.broker.mock_client import MockBrokerClient
 
 _JST = ZoneInfo("Asia/Tokyo")
 _SYMBOL_CODE = "7203"
 _TOPIX_SYMBOL_CODE = "1306"
-
-
-def _yesterday_jst_str() -> str:
-    return (datetime.now(_JST) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 class _BaseMorningTradeTest(unittest.TestCase):
@@ -62,14 +59,13 @@ class TestFreshnessCheckFailure(_BaseMorningTradeTest):
     @patch("src.batch.morning_trade.fetch_topix_price_with_retry")
     @patch("src.batch.morning_trade.send_telegram_report")
     @patch("src.batch.morning_trade.send_telegram_alert")
-    def test_missing_recent_business_day_stops_before_topix_check(
+    def test_missing_watchlist_stops_before_topix_check(
         self, mock_alert, mock_report, mock_fetch_topix
     ) -> None:
-        # daily_market_data に何も無いため、直近営業日が特定できない
         run_morning_batch(self.conn, broker=MockBrokerClient())
 
         mock_alert.assert_called_once_with(
-            "[WARNING] 直近営業日が特定できないため本日休業"
+            "[WARNING] 監視リスト鮮度不足のため本日休業"
         )
         mock_fetch_topix.assert_not_called()
 
@@ -80,24 +76,43 @@ class TestFreshnessCheckFailure(_BaseMorningTradeTest):
         self.assertEqual(halts_count, 0)
         self.assertEqual(sessions_count, 0)
 
+    @patch("src.batch.vwap_tracker.time.sleep")
+    @patch("src.batch.morning_trade.time.sleep")
+    @patch("src.batch.morning_trade.fetch_topix_price_with_retry")
+    @patch("src.batch.morning_trade.send_telegram_report")
+    @patch("src.batch.morning_trade.send_telegram_alert")
+    def test_empty_daily_market_data_does_not_skip_as_closed(
+        self, mock_alert, mock_report, mock_fetch_topix, mock_sleep, mock_vwap_sleep
+    ) -> None:
+        today = _today_jst_str()
+        generated_at = f"{previous_trading_day(today)}T15:05:00+09:00"
+        self.conn.execute(
+            """
+            INSERT INTO watchlist_daily (
+                trade_date, symbol_code, rank, oir_eval_score, generated_at
+            ) VALUES (?, ?, 1, 0.9, ?)
+            """,
+            (today, _SYMBOL_CODE, generated_at),
+        )
+        self.conn.commit()
+
+        run_morning_batch(self.conn, broker=MockBrokerClient())
+
+        alert_messages = [call.args[0] for call in mock_alert.call_args_list]
+        self.assertFalse(
+            any("直近営業日が特定できない" in message for message in alert_messages)
+        )
+        mock_report.assert_any_call("[INFO] 本日稼働開始")
+        mock_report.assert_any_call("[INFO] 朝の発注処理完了")
+
 
 class TestSystemHaltedSkipsEntries(_BaseMorningTradeTest):
     def setUp(self) -> None:
         super().setUp()
         today = _today_jst_str()
-        recent_trade_date = _yesterday_jst_str()
+        recent_trade_date = previous_trading_day(today)
 
-        # 直近営業日データを用意（TOPIX前日終値は未登録のままロット0扱いにする）
-        self.conn.execute(
-            """
-            INSERT INTO daily_market_data (
-                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
-            ) VALUES (?, ?, NULL, NULL, NULL, ?)
-            """,
-            (_SYMBOL_CODE, recent_trade_date, datetime.now(_JST).isoformat()),
-        )
-
-        # 監視リストの鮮度条件（直近営業日と同日・15:00以降）を満たす
+        # 監視リストの鮮度条件（カレンダー上の前営業日・15:00以降）を満たす
         generated_at = f"{recent_trade_date}T15:05:00+09:00"
         self.conn.execute(
             """
@@ -138,16 +153,7 @@ class TestMorningSessionPersistence(_BaseMorningTradeTest):
     def setUp(self) -> None:
         super().setUp()
         today = _today_jst_str()
-        recent_trade_date = _yesterday_jst_str()
-        self.conn.execute(
-            """
-            INSERT INTO daily_market_data (
-                symbol_code, trade_date, prev_close, atr14, avg_volume_5d, created_at
-            ) VALUES (?, ?, NULL, NULL, NULL, ?)
-            """,
-            (_SYMBOL_CODE, recent_trade_date, datetime.now(_JST).isoformat()),
-        )
-        generated_at = f"{recent_trade_date}T15:05:00+09:00"
+        generated_at = f"{previous_trading_day(today)}T15:05:00+09:00"
         self.conn.execute(
             """
             INSERT INTO watchlist_daily (
