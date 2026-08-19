@@ -15,6 +15,7 @@ from src.batch.eod_reconciliation import (
     check_position_consistency,
 )
 from src.batch.market_data_update import update_daily_market_data
+from src.batch.symbol_sync import sync_symbols_from_yaml
 from src.batch.watchlist_generation import generate_watchlist
 from src.broker.base import BrokerClient
 
@@ -35,6 +36,7 @@ def run_eod_process(conn: sqlite3.Connection, broker: BrokerClient) -> None:
     seed_initial_balance(conn, broker)
 
     try:
+        sync_symbols_from_yaml(conn)
         update_daily_market_data(conn, broker, today)
         generate_watchlist(conn, today)
     except Exception as exc:

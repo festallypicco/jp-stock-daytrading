@@ -63,6 +63,7 @@ class _BaseEodProcessTest(unittest.TestCase):
 class TestRunEodProcess(_BaseEodProcessTest):
     @patch("src.batch.eod_process.is_trading_day", return_value=False)
     @patch("src.batch.eod_process.seed_initial_balance")
+    @patch("src.batch.eod_process.sync_symbols_from_yaml")
     @patch("src.batch.eod_process.update_daily_market_data")
     @patch("src.batch.eod_process.generate_watchlist")
     @patch("src.batch.eod_process.check_position_consistency")
@@ -73,12 +74,14 @@ class TestRunEodProcess(_BaseEodProcessTest):
         mock_check_position,
         mock_generate_watchlist,
         mock_update_market_data,
+        mock_sync_symbols,
         mock_seed,
         mock_is_trading_day,
     ) -> None:
         run_eod_process(self.conn, self.broker)
 
         mock_seed.assert_not_called()
+        mock_sync_symbols.assert_not_called()
         mock_update_market_data.assert_not_called()
         mock_generate_watchlist.assert_not_called()
         mock_check_position.assert_not_called()
@@ -87,6 +90,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
     @patch("src.batch.eod_process._today_jst_str", return_value=_TODAY)
     @patch("src.batch.eod_process.is_trading_day", return_value=True)
     @patch("src.batch.eod_process.seed_initial_balance")
+    @patch("src.batch.eod_process.sync_symbols_from_yaml")
     @patch("src.batch.eod_process.update_daily_market_data")
     @patch("src.batch.eod_process.generate_watchlist")
     @patch("src.batch.eod_process.check_position_consistency")
@@ -99,6 +103,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
         mock_check_position,
         mock_generate_watchlist,
         mock_update_market_data,
+        mock_sync_symbols,
         mock_seed,
         mock_is_trading_day,
         mock_today,
@@ -109,6 +114,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
         run_eod_process(self.conn, self.broker)
 
         mock_seed.assert_called_once_with(self.conn, self.broker)
+        mock_sync_symbols.assert_called_once_with(self.conn)
         mock_update_market_data.assert_called_once_with(self.conn, self.broker, _TODAY)
         mock_generate_watchlist.assert_called_once_with(self.conn, _TODAY)
         mock_check_position.assert_called_once_with(self.broker, self.conn)
@@ -118,6 +124,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
 
     @patch("src.batch.eod_process.is_trading_day", return_value=True)
     @patch("src.batch.eod_process.seed_initial_balance")
+    @patch("src.batch.eod_process.sync_symbols_from_yaml")
     @patch("src.batch.eod_process.update_daily_market_data")
     @patch("src.batch.eod_process.generate_watchlist")
     @patch("src.batch.eod_process.check_position_consistency")
@@ -130,6 +137,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
         mock_check_position,
         mock_generate_watchlist,
         mock_update_market_data,
+        mock_sync_symbols,
         mock_seed,
         mock_is_trading_day,
     ) -> None:
@@ -148,6 +156,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
 
     @patch("src.batch.eod_process.is_trading_day", return_value=True)
     @patch("src.batch.eod_process.seed_initial_balance")
+    @patch("src.batch.eod_process.sync_symbols_from_yaml")
     @patch("src.batch.eod_process.update_daily_market_data")
     @patch("src.batch.eod_process.generate_watchlist")
     @patch("src.batch.eod_process.check_position_consistency")
@@ -160,6 +169,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
         mock_check_position,
         mock_generate_watchlist,
         mock_update_market_data,
+        mock_sync_symbols,
         mock_seed,
         mock_is_trading_day,
     ) -> None:
@@ -176,6 +186,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
 
     @patch("src.batch.eod_process.is_trading_day", return_value=True)
     @patch("src.batch.eod_process.seed_initial_balance")
+    @patch("src.batch.eod_process.sync_symbols_from_yaml")
     @patch("src.batch.eod_process.update_daily_market_data", side_effect=RuntimeError("fetch failed"))
     @patch("src.batch.eod_process.generate_watchlist")
     @patch("src.batch.eod_process.check_position_consistency")
@@ -186,6 +197,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
         mock_check_position,
         mock_generate_watchlist,
         mock_update_market_data,
+        mock_sync_symbols,
         mock_seed,
         mock_is_trading_day,
     ) -> None:
@@ -194,11 +206,13 @@ class TestRunEodProcess(_BaseEodProcessTest):
 
         mock_alert.assert_called_once()
         self.assertIn("eod_process異常終了", mock_alert.call_args.args[0])
+        mock_sync_symbols.assert_called_once_with(self.conn)
         mock_generate_watchlist.assert_not_called()
         mock_check_position.assert_not_called()
 
     @patch("src.batch.eod_process.is_trading_day", return_value=True)
     @patch("src.batch.eod_process.seed_initial_balance")
+    @patch("src.batch.eod_process.sync_symbols_from_yaml")
     @patch("src.batch.eod_process.update_daily_market_data")
     @patch("src.batch.eod_process.generate_watchlist", side_effect=ValueError("watchlist failed"))
     @patch("src.batch.eod_process.check_position_consistency")
@@ -209,6 +223,7 @@ class TestRunEodProcess(_BaseEodProcessTest):
         mock_check_position,
         mock_update_market_data,
         mock_generate_watchlist,
+        mock_sync_symbols,
         mock_seed,
         mock_is_trading_day,
     ) -> None:

@@ -1,7 +1,103 @@
-# 銘柄リストの雛形。
-# 各銘柄は status を持つ想定:
+# 静的設定の正（Static Source of Truth）。
+# 起動時・日次バッチ初期化時に symbols テーブルへ一方通行 UPSERT する。
 #   - active: 売買対象
 #   - observation: 監視のみ
 #   - archived: アーカイブ
 #   - index_proxy: 指数プロキシ
-symbols: []
+symbols:
+  - code: "8306"
+    name: "三菱ＵＦＪフィナンシャル・グループ"
+    status: active
+  - code: "7203"
+    name: "トヨタ自動車"
+    status: active
+  - code: "8316"
+    name: "三井住友フィナンシャルグループ"
+    status: active
+  - code: "6501"
+    name: "日立製作所"
+    status: active
+  - code: "6758"
+    name: "ソニーグループ"
+    status: active
+  - code: "8035"
+    name: "東京エレクトロン"
+    status: active
+  - code: "8411"
+    name: "みずほフィナンシャルグループ"
+    status: active
+  - code: "9984"
+    name: "ソフトバンクグループ"
+    status: active
+  - code: "6857"
+    name: "アドバンテスト"
+    status: active
+  - code: "8058"
+    name: "三菱商事"
+    status: active
+  - code: "6098"
+    name: "リクルートホールディングス"
+    status: active
+  - code: "8766"
+    name: "東京海上ホールディングス"
+    status: active
+  - code: "6861"
+    name: "キーエンス"
+    status: active
+  - code: "8031"
+    name: "三井物産"
+    status: active
+  - code: "8001"
+    name: "伊藤忠商事"
+    status: active
+  - code: "7011"
+    name: "三菱重工業"
+    status: active
+  - code: "6503"
+    name: "三菱電機"
+    status: active
+  - code: "9983"
+    name: "ファーストリテイリング"
+    status: active
+  - code: "4063"
+    name: "信越化学工業"
+    status: active
+  - code: "4502"
+    name: "武田薬品工業"
+    status: active
+  - code: "7974"
+    name: "任天堂"
+    status: active
+  - code: "7741"
+    name: "ＨＯＹＡ"
+    status: active
+  - code: "2914"
+    name: "日本たばこ産業"
+    status: active
+  - code: "9432"
+    name: "ＮＴＴ"
+    status: active
+  - code: "9433"
+    name: "ＫＤＤＩ"
+    status: active
+  - code: "9434"
+    name: "ソフトバンク"
+    status: active
+  - code: "6367"
+    name: "ダイキン工業"
+    status: active
+  - code: "7267"
+    name: "本田技研工業"
+    status: active
+  - code: "3382"
+    name: "セブン＆アイ・ホールディングス"
+    status: active
+  - code: "4568"
+    name: "第一三共"
+    status: active
+  - code: "8729"
+    name: "ソニーフィナンシャルグループ"
+    status: active
+  - code: "1306"
+    name: "ＴＯＰＩＸ連動型上場投資信託"
+    status: index_proxy

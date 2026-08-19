@@ -2,3 +2,4 @@
 requests
 jpholiday
 streamlit
+PyYAML
