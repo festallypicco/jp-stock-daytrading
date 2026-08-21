@@ -56,3 +56,23 @@ def previous_trading_day(from_date: str | date) -> str:
         f"previous trading day not found within {_MAX_PREVIOUS_LOOKBACK_DAYS} days "
         f"before {from_date}"
     )
+
+
+def next_trading_day(from_date: str | date) -> str:
+    """from_dateの翌日以降で、is_trading_day()がTrueになる直近の営業日を返す。
+
+    DBは参照せず、土日・祝日・年末年始のカレンダー計算のみで判定する。
+    先読み回数が _MAX_PREVIOUS_LOOKBACK_DAYS を超えた場合は ValueError。
+    """
+    if isinstance(from_date, str):
+        current_date = date.fromisoformat(from_date) + timedelta(days=1)
+    else:
+        current_date = from_date + timedelta(days=1)
+    for _ in range(_MAX_PREVIOUS_LOOKBACK_DAYS):
+        if is_trading_day(current_date):
+            return current_date.isoformat()
+        current_date += timedelta(days=1)
+    raise ValueError(
+        f"next trading day not found within {_MAX_PREVIOUS_LOOKBACK_DAYS} days "
+        f"after {from_date}"
+    )

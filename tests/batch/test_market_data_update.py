@@ -8,12 +8,14 @@ import tempfile
 import unittest
 
 from db.initializer import init_db
+from src.batch.calendar import next_trading_day
 from src.batch.market_data_update import update_daily_market_data
 from src.broker.mock_client import MockBrokerClient
 from src.broker.types import DailyBar
 
 _NOW = "2026-08-10T09:00:00+09:00"
 _TRADE_DATE = "2026-08-11"
+_NEXT_TRADE_DATE = next_trading_day(_TRADE_DATE)
 
 
 def _bar(trade_date: str, high: float, low: float, close: float, volume: int) -> DailyBar:
@@ -71,7 +73,7 @@ class TestUpdateDailyMarketDataNormalCase(_BaseMarketDataUpdateTest):
             FROM daily_market_data
             WHERE symbol_code = '7203' AND trade_date = ?
             """,
-            (_TRADE_DATE,),
+            (_NEXT_TRADE_DATE,),
         ).fetchone()
         self.assertIsNotNone(row)
         prev_close, atr14, avg_volume_5d, open_price, high, low, close = row
@@ -82,6 +84,23 @@ class TestUpdateDailyMarketDataNormalCase(_BaseMarketDataUpdateTest):
         self.assertIsNone(high)
         self.assertIsNone(low)
         self.assertIsNone(close)
+
+        eod_day_row = self.conn.execute(
+            """
+            SELECT prev_close, atr14, avg_volume_5d
+            FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = ?
+            """,
+            (_TRADE_DATE,),
+        ).fetchone()
+        self.assertTrue(
+            eod_day_row is None
+            or (
+                eod_day_row[0] is None
+                and eod_day_row[1] is None
+                and eod_day_row[2] is None
+            )
+        )
 
 
 class TestUpdateDailyMarketDataUpsert(_BaseMarketDataUpdateTest):
@@ -104,7 +123,7 @@ class TestUpdateDailyMarketDataUpsert(_BaseMarketDataUpdateTest):
             SELECT prev_close, atr14 FROM daily_market_data
             WHERE symbol_code = '7203' AND trade_date = ?
             """,
-            (_TRADE_DATE,),
+            (_NEXT_TRADE_DATE,),
         ).fetchall()
         self.assertEqual(len(rows), 1)
         prev_close, atr14 = rows[0]
@@ -186,20 +205,28 @@ class TestUpdateDailyMarketDataPreviousDayOhlc(_BaseMarketDataUpdateTest):
             WHERE symbol_code = '7203' AND trade_date = '2026-08-14'
             """
         ).fetchone()
-        today_row = self.conn.execute(
+        eod_day_row = self.conn.execute(
             """
             SELECT open, high, low, close, prev_close
             FROM daily_market_data
             WHERE symbol_code = '7203' AND trade_date = '2026-08-17'
             """
         ).fetchone()
+        next_day_row = self.conn.execute(
+            """
+            SELECT open, high, low, close, prev_close
+            FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = '2026-08-18'
+            """
+        ).fetchone()
 
         self.assertEqual(previous_row, (105.0, 115.0, 95.0, 105.0, 90.0))
-        self.assertEqual(today_row[0], None)
-        self.assertEqual(today_row[1], None)
-        self.assertEqual(today_row[2], None)
-        self.assertEqual(today_row[3], None)
-        self.assertEqual(today_row[4], 105.0)
+        self.assertIsNone(eod_day_row)
+        self.assertEqual(next_day_row[0], None)
+        self.assertEqual(next_day_row[1], None)
+        self.assertEqual(next_day_row[2], None)
+        self.assertEqual(next_day_row[3], None)
+        self.assertEqual(next_day_row[4], 105.0)
 
     def test_missing_previous_trading_day_row_is_inserted(self) -> None:
         self._insert_symbol("7203", "active")
@@ -214,7 +241,7 @@ class TestUpdateDailyMarketDataPreviousDayOhlc(_BaseMarketDataUpdateTest):
                 "SELECT trade_date FROM daily_market_data WHERE symbol_code = '7203'"
             ).fetchall()
         }
-        self.assertEqual(dates, {"2026-08-14", "2026-08-17"})
+        self.assertEqual(dates, {"2026-08-14", "2026-08-18"})
         previous_ohlc = self.conn.execute(
             """
             SELECT open, high, low, close
@@ -223,6 +250,16 @@ class TestUpdateDailyMarketDataPreviousDayOhlc(_BaseMarketDataUpdateTest):
             """
         ).fetchone()
         self.assertEqual(previous_ohlc, (105.0, 115.0, 95.0, 105.0))
+        next_day_metrics = self.conn.execute(
+            """
+            SELECT prev_close, atr14, avg_volume_5d
+            FROM daily_market_data
+            WHERE symbol_code = '7203' AND trade_date = '2026-08-18'
+            """
+        ).fetchone()
+        self.assertEqual(next_day_metrics[0], 105.0)
+        self.assertAlmostEqual(next_day_metrics[1], 20.0)
+        self.assertAlmostEqual(next_day_metrics[2], 1300.0)
 
 
 if __name__ == "__main__":

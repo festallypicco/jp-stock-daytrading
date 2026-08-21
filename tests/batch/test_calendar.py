@@ -6,7 +6,7 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
-from src.batch.calendar import is_trading_day, previous_trading_day
+from src.batch.calendar import is_trading_day, next_trading_day, previous_trading_day
 
 
 class TestWeekdayWeekendRegression(unittest.TestCase):
@@ -60,6 +60,22 @@ class TestPreviousTradingDay(unittest.TestCase):
         with patch("src.batch.calendar.is_trading_day", return_value=False):
             with self.assertRaises(ValueError):
                 previous_trading_day("2026-08-17")
+
+
+class TestNextTradingDay(unittest.TestCase):
+    def test_skips_weekend_from_friday_to_monday(self) -> None:
+        self.assertEqual(next_trading_day("2026-08-14"), "2026-08-17")
+
+    def test_returns_next_weekday(self) -> None:
+        self.assertEqual(next_trading_day("2026-08-11"), "2026-08-12")
+
+    def test_skips_year_end_holidays(self) -> None:
+        self.assertEqual(next_trading_day("2025-12-30"), "2026-01-05")
+
+    def test_raises_when_lookahead_exceeds_limit(self) -> None:
+        with patch("src.batch.calendar.is_trading_day", return_value=False):
+            with self.assertRaises(ValueError):
+                next_trading_day("2026-08-17")
 
 
 if __name__ == "__main__":
