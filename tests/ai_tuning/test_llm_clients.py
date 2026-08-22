@@ -42,9 +42,9 @@ class TestCallGroq(unittest.TestCase):
 
 
 class TestCallGemini(unittest.TestCase):
-    @patch.dict("os.environ", {}, clear=True)
+    @patch.dict("os.environ", {"GEMINI_API_KEY": "AQ.test-auth-key"}, clear=True)
     @patch("src.ai_tuning.llm_clients.urllib.request.urlopen")
-    def test_returns_candidate_text_without_api_key(self, mock_urlopen) -> None:
+    def test_returns_candidate_text_and_uses_header_auth(self, mock_urlopen) -> None:
         mock_urlopen.return_value = _fake_response(
             {"candidates": [{"content": {"parts": [{"text": '{"proposed_value": 0.32}'}]}}]}
         )
@@ -53,6 +53,14 @@ class TestCallGemini(unittest.TestCase):
 
         self.assertEqual(result, '{"proposed_value": 0.32}')
         mock_urlopen.assert_called_once()
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+        )
+        self.assertNotIn("?key=", request.full_url)
+        self.assertEqual(request.headers["Content-type"], "application/json")
+        self.assertEqual(request.headers["X-goog-api-key"], "AQ.test-auth-key")
 
 
 class TestClassifyLlmErrorKind(unittest.TestCase):

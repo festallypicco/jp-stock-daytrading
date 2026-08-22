@@ -50,12 +50,15 @@ def call_groq(prompt: str, model: str) -> str:
 def call_gemini(prompt: str, model: str) -> str:
     """Gemini generateContent APIを呼び出し、応答テキストを返す。"""
     api_key = os.getenv(_GEMINI_API_KEY_ENV)
-    endpoint = f"{_GEMINI_ENDPOINT_TEMPLATE.format(model=model)}?key={api_key}"
+    endpoint = _GEMINI_ENDPOINT_TEMPLATE.format(model=model)
     body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
     request = urllib.request.Request(
         endpoint,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=_REQUEST_TIMEOUT_SEC) as response:
